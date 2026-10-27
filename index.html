@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Thời Tiết Bay</title>
+<meta name="description" content="METAR & TAF cho phi công – giao diện tiếng Việt">
+<meta name="theme-color" content="#0b1220">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Thời Tiết Bay">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="styles.css?v=1">
+</head>
+<body>
+<div id="app">
+  <!-- Danh sách -->
+  <section id="view-list" class="view active">
+    <header class="topbar">
+      <button class="tb-btn" id="btn-edit">Sửa</button>
+      <h1>Thời Tiết Bay</h1>
+      <div class="tb-right">
+        <button class="tb-icon" id="btn-settings" aria-label="Cài đặt"><svg viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7zm7.4-2.5a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3h-4l-.3 2.6a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1L11 21h4l.3-2.6a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5z"/></svg></button>
+        <button class="tb-icon" id="btn-add" aria-label="Thêm sân bay"><svg viewBox="0 0 24 24"><path d="M11 4h2v7h7v2h-7v7h-2v-7H4v-2h7z"/></svg></button>
+      </div>
+    </header>
+    <div class="scroller" id="list-scroller">
+      <div class="ptr" id="ptr"><div class="ptr-spin"></div><span id="ptr-text">Kéo để làm mới</span></div>
+      <div class="list-meta" id="list-meta"></div>
+      <ul class="apt-list" id="apt-list"></ul>
+      <div class="empty" id="list-empty" hidden>
+        <p>Chưa có sân bay yêu thích.</p>
+        <button class="pill" id="btn-empty-add">+ Thêm sân bay</button>
+      </div>
+      <p class="footnote">Dữ liệu: aviationweather.gov (NOAA). Chỉ dùng tham khảo – không thay thế briefing chính thức.</p>
+    </div>
+  </section>
+
+  <!-- Chi tiết -->
+  <section id="view-detail" class="view">
+    <header class="topbar">
+      <button class="tb-btn back" id="btn-back"><svg viewBox="0 0 24 24"><path d="M15.4 4.6 14 3.2 5.2 12l8.8 8.8 1.4-1.4L8 12z"/></svg>Danh sách</button>
+      <h1 id="d-title">—</h1>
+      <div class="tb-right">
+        <button class="tb-icon" id="btn-fav" aria-label="Yêu thích"><svg viewBox="0 0 24 24"><path d="m12 17.3-6.2 3.7 1.6-7L2 9.2l7.1-.6L12 2l2.9 6.6 7.1.6-5.4 4.8 1.6 7z"/></svg></button>
+        <button class="tb-icon" id="btn-refresh" aria-label="Làm mới"><svg viewBox="0 0 24 24"><path d="M17.7 6.3A8 8 0 1 0 20 12h-2a6 6 0 1 1-1.8-4.2L13 11h7V4z"/></svg></button>
+      </div>
+    </header>
+    <div class="scroller" id="detail-scroller">
+      <div class="ptr" id="ptr2"><div class="ptr-spin"></div><span>Kéo để làm mới</span></div>
+      <div id="detail-body"></div>
+    </div>
+  </section>
+
+  <!-- Tìm kiếm -->
+  <div class="sheet" id="sheet-search" hidden>
+    <div class="sheet-panel">
+      <div class="search-bar">
+        <input id="search-input" type="search" placeholder="Mã ICAO/IATA hoặc tên sân bay, thành phố…" autocomplete="off" autocapitalize="characters" spellcheck="false">
+        <button class="tb-btn" id="btn-search-close">Huỷ</button>
+      </div>
+      <div class="search-hint" id="search-hint">Gợi ý: sân bay Việt Nam</div>
+      <ul class="search-results" id="search-results"></ul>
+    </div>
+  </div>
+
+  <!-- Cài đặt -->
+  <div class="sheet" id="sheet-settings" hidden>
+    <div class="sheet-panel">
+      <header class="sheet-head"><h2>Cài đặt</h2><button class="tb-btn" id="btn-settings-close">Xong</button></header>
+      <div class="settings" id="settings-body"></div>
+    </div>
+  </div>
+  <div class="toast" id="toast" hidden></div>
+</div>
+<script src="app.js?v=1"></script>
+</body>
+</html>

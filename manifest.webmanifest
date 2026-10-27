@@ -1,0 +1,17 @@
+{
+  "name": "Thời Tiết Bay – METAR & TAF",
+  "short_name": "Thời Tiết Bay",
+  "description": "Thời tiết hàng không METAR/TAF, giao diện tiếng Việt",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b1220",
+  "theme_color": "#0b1220",
+  "lang": "vi",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
