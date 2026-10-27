@@ -13,7 +13,9 @@ const LS = {
   set(k, v) { try { localStorage.setItem('ttb.' + k, JSON.stringify(v)); } catch {} }
 };
 let favs = LS.get('favs', DEFAULT_FAVS);
-const settings = Object.assign({ wind: 'kt', press: 'hPa', temp: 'C', vis: 'm', refresh: 10, theme: 'auto', listTime: 'utc' }, LS.get('settings', {}));
+const settings = Object.assign({ wind: 'kt', press: 'hPa', temp: 'C', vis: 'm', refresh: 10, theme: 'auto', listTime: 'utc', std: 'faa', notify: 'off' }, LS.get('settings', {}));
+function saveFavs() { LS.set('favs', favs); LS.set('updated', Date.now()); window.onPrefsChanged?.(); }
+function saveSettings() { LS.set('settings', settings); LS.set('updated', Date.now()); window.onPrefsChanged?.(); }
 let cache = LS.get('cache', { metar: {}, taf: {}, ts: 0 }); // metar/taf theo ICAO
 let airports = null, aptMap = {};
 let current = null; // ICAO đang xem
@@ -41,25 +43,59 @@ async function loadAirports() {
   return airports;
 }
 function norm(s) { return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase(); }
-const VN_NAMES = { VVTS: 'Tân Sơn Nhất', VVNB: 'Nội Bài', VVDN: 'Đà Nẵng', VVCR: 'Cam Ranh', VVPQ: 'Phú Quốc', VVCI: 'Cát Bi', VVPB: 'Phú Bài', VVCT: 'Cần Thơ', VVDL: 'Liên Khương', VVBM: 'Buôn Ma Thuột', VVVH: 'Vinh', VVTH: 'Đồng Hới', VVPC: 'Phù Cát', VVCS: 'Côn Đảo', VVDH: 'Đồng Hới', VVPK: 'Pleiku', VVRG: 'Rạch Giá', VVCA: 'Chu Lai', VVTX: 'Thọ Xuân', VVVD: 'Vân Đồn', VVDB: 'Điện Biên Phủ', VVCM: 'Cà Mau', VVVT: 'Vũng Tàu' };
+const VN_NAMES = Object.fromEntries(Object.entries(NAMES_VI).map(([k, v]) => [k, v[0]]));
+function tzFor(lat, lon) { try { return lat != null && window.tzlookup ? tzlookup(lat, lon) : null; } catch { return null; } }
 function aptInfo(icao) {
   const a = aptMap[icao] || {};
   const m = cache.metar[icao], t = cache.taf[icao];
+  const vi = NAMES_VI[icao], ex = (window.extraApt || {})[icao] || {};
+  const lat = a.lat ?? m?.lat ?? t?.lat ?? ex.lat, lon = a.lon ?? m?.lon ?? t?.lon ?? ex.lon;
   return {
-    icao, iata: a.iata || '', name: VN_NAMES[icao] ? VN_NAMES[icao] : (a.name || cleanName(m?.name || t?.name) || ''),
-    full: a.name || cleanName(m?.name || t?.name) || '', city: a.city || '', country: a.country || '',
-    lat: a.lat ?? m?.lat ?? t?.lat, lon: a.lon ?? m?.lon ?? t?.lon, elev: a.elev ?? (m?.elev != null ? Math.round(m.elev * 3.28084) : null), tz: a.tz || null
+    icao, iata: a.iata || ex.iata || '', name: vi ? vi[0] : (a.name || cleanName(m?.name || t?.name) || ex.name || ''),
+    full: a.name || cleanName(m?.name || t?.name) || ex.name || '', vi: vi ? vi[0] : '', city: vi ? vi[1] : (a.city || ''), country: a.country || ex.country || '',
+    lat, lon, elev: a.elev ?? ex.elev ?? (m?.elev != null ? Math.round(m.elev * 3.28084) : null), tz: a.tz || tzFor(lat, lon)
   };
 }
 function cleanName(n) { return n ? n.replace(/,\s*[A-Z0-9]{1,3},\s*[A-Z]{2}$/, '') : ''; }
 
 /* ---------- Gọi API ---------- */
+// Nguồn dữ liệu theo thứ tự ưu tiên: proxy Vercel của app → 2 proxy CORS công khai dự phòng.
+const SOURCES = [
+  { name: 'Proxy Thời Tiết Bay', url: (t, q) => API + '?type=' + t + '&' + q },
+  { name: 'allorigins (dự phòng)', url: (t, q) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(`https://aviationweather.gov/api/data/${t}?${q}`) },
+  { name: 'codetabs (dự phòng)', url: (t, q) => 'https://api.codetabs.com/v1/proxy/?quest=' + encodeURIComponent(`https://aviationweather.gov/api/data/${t}?${q}`) }
+];
+let srcOk = 0; // nguồn dùng được gần nhất
+window.netState = { ok: true, source: SOURCES[0].name, err: '' };
+async function fetchT(u, ms = 12000, opt = {}) {
+  const c = new AbortController(); const t = setTimeout(() => c.abort(), ms);
+  try { return await fetch(u, { cache: 'no-store', ...opt, signal: c.signal }); } finally { clearTimeout(t); }
+}
 async function api(type, params) {
-  const u = API + '?type=' + type + '&' + new URLSearchParams(params);
-  const r = await fetch(u, { cache: 'no-store' });
-  if (!r.ok) throw new Error('HTTP ' + r.status);
-  const txt = await r.text();
-  return txt.trim() ? JSON.parse(txt) : [];
+  const q = new URLSearchParams(params).toString();
+  const order = [srcOk, ...SOURCES.keys()].filter((v, i, a) => a.indexOf(v) === i);
+  let lastErr;
+  for (const i of order) {
+    try {
+      const r = await fetchT(SOURCES[i].url(type, q), i === 0 ? 12000 : 15000);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const txt = await r.text();
+      const data = txt.trim() ? JSON.parse(txt) : [];
+      if (!Array.isArray(data)) throw new Error('dữ liệu lạ');
+      srcOk = i; setNet(true, SOURCES[i].name);
+      return data;
+    } catch (e) { lastErr = e; }
+  }
+  setNet(false, '', lastErr?.name === 'AbortError' ? 'hết thời gian chờ' : (lastErr?.message || 'lỗi mạng'));
+  throw lastErr || new Error('Không tải được');
+}
+function setNet(ok, source, err) {
+  netState = { ok, source, err };
+  const b = document.getElementById('banner');
+  if (ok && source === SOURCES[0].name) { b.hidden = true; return; }
+  b.hidden = false;
+  b.textContent = ok ? `⚠︎ Proxy chính lỗi – đang dùng nguồn dự phòng: ${source}.`
+    : `⚠︎ Không tải được dữ liệu mới (${err}). Đang hiện dữ liệu lưu tạm${cache.ts ? ' lúc ' + fmtLocalNow(cache.ts) : ''} – có thể đã cũ.`;
 }
 async function fetchWx(ids, hours = 3) {
   ids = [...new Set(ids)].filter(Boolean);
@@ -69,13 +105,13 @@ async function fetchWx(ids, hours = 3) {
     const [metars, tafs] = await Promise.all([api('metar', { ids: ch.join(','), format: 'json', hours }), api('taf', { ids: ch.join(','), format: 'json' })]);
     const latest = {};
     for (const m of metars) { if (!latest[m.icaoId] || m.obsTime > latest[m.icaoId].obsTime) latest[m.icaoId] = m; }
-    for (const id of ch) { if (latest[id]) cache.metar[id] = latest[id]; }
+    for (const id of ch) { if (latest[id]) { window.onNewMetar?.(id, cache.metar[id], latest[id]); cache.metar[id] = latest[id]; } }
     const hist = {};
     for (const m of metars) (hist[m.icaoId] ||= []).push(m);
     for (const id in hist) cache.metar[id]._hist = hist[id].sort((a, b) => b.obsTime - a.obsTime).slice(0, 8).map(m => ({ rawOb: m.rawOb, obsTime: m.obsTime, fltCat: m.fltCat }));
     const tl = {};
     for (const t of tafs) { if (!tl[t.icaoId] || t.issueTime > tl[t.icaoId].issueTime) tl[t.icaoId] = t; }
-    for (const id of ch) { if (tl[id]) cache.taf[id] = tl[id]; }
+    for (const id of ch) { if (tl[id]) { window.onNewTaf?.(id, cache.taf[id], tl[id]); cache.taf[id] = tl[id]; } }
   }
   cache.ts = Date.now();
   LS.set('cache', cache);
@@ -208,18 +244,32 @@ function parseReport(raw, isTaf) {
   }
   return r;
 }
-function flightCat(visM, ceilFt) {
+function flightCat(visM, ceilFt, clouds) {
+  const std = settings.std || 'faa';
+  if (std === 'icao') { // ICAO/EASA: VMC khi tầm nhìn ≥ 5 km và trần mây ≥ 1.500 ft
+    return (visM == null || visM >= 5000) && (ceilFt == null || ceilFt >= 1500) ? 'VMC' : 'IMC';
+  }
+  if (std === 'nato') { // Mã màu NATO: dùng mây thấp nhất từ SCT (≥ 3/8) trở lên
+    let base = null; for (const k of clouds || []) if (['SCT', 'BKN', 'OVC', 'VV'].includes(k.cover) && k.base != null) base = base == null ? k.base : Math.min(base, k.base);
+    const v = visM == null ? 99999 : visM, b = base == null ? 99999 : base;
+    if (v >= 8000 && b >= 2500) return 'BLU'; if (v >= 5000 && b >= 1500) return 'WHT'; if (v >= 3700 && b >= 700) return 'GRN';
+    if (v >= 1600 && b >= 300) return 'YLO'; if (v >= 800 && b >= 200) return 'AMB'; return 'RED';
+  }
   const sm = visM == null ? 99 : visM / 1609.34, c = ceilFt == null ? 99999 : ceilFt;
   if (sm < 1 || c < 500) return 'LIFR'; if (sm < 3 || c < 1000) return 'IFR'; if (sm <= 5 || c <= 3000) return 'MVFR'; return 'VFR';
 }
 function ceilingOf(clouds) { let c = null; for (const k of clouds || []) if ((k.cover === 'BKN' || k.cover === 'OVC' || k.cover === 'OVX' || k.cover === 'VV') && k.base != null) c = c == null ? k.base : Math.min(c, k.base); return c; }
 function metarCat(m) {
-  if (m?.fltCat) return m.fltCat;
   if (!m) return 'UNK';
-  const p = parseReport(m.rawOb); return p.vis || p.clouds.length ? flightCat(p.vis?.m, ceilingOf(p.clouds)) : 'UNK';
+  if (m.fltCat && (settings.std || 'faa') === 'faa') return m.fltCat;
+  const p = parseReport(m.rawOb); if (!(p.vis || p.clouds.length || p.cavok || p.sky)) return m.fltCat && settings.std === 'faa' ? m.fltCat : 'UNK';
+  return flightCat(p.vis?.m ?? 9999, ceilingOf(p.clouds), p.clouds);
 }
-const CAT_VN = { VFR: 'VFR – bay bằng mắt', MVFR: 'MVFR – VFR hạn chế', IFR: 'IFR – bay bằng thiết bị', LIFR: 'LIFR – IFR thấp', UNK: 'Không rõ' };
+const CAT_VN = { VFR: 'VFR – bay bằng mắt', MVFR: 'MVFR – VFR hạn chế', IFR: 'IFR – bay bằng thiết bị', LIFR: 'LIFR – IFR thấp', UNK: 'Không rõ',
+  VMC: 'VMC – điều kiện khí tượng bay bằng mắt', IMC: 'IMC – điều kiện khí tượng bay bằng thiết bị',
+  BLU: 'BLU – tầm nhìn ≥ 8 km, mây ≥ 2.500 ft', WHT: 'WHT – ≥ 5 km, ≥ 1.500 ft', GRN: 'GRN – ≥ 3,7 km, ≥ 700 ft', YLO: 'YLO – ≥ 1,6 km, ≥ 300 ft', AMB: 'AMB – ≥ 800 m, ≥ 200 ft', RED: 'RED – dưới mức AMB' };
 const catColor = c => `var(--${(c || 'unk').toLowerCase()})`;
+window.catColor = catColor;
 function windArrow(dir) { return `<span class="windarrow" style="transform:rotate(${dir + 180}deg)"><svg viewBox="0 0 24 24"><path d="M12 2 5 20l7-4 7 4z"/></svg></span>`; }
 function windText(w, short) {
   if (!w) return '—';
@@ -294,7 +344,7 @@ function editCtl() { return `<div class="edit-ctl"><button class="del" aria-labe
 
 $('#apt-list').addEventListener('click', e => {
   const li = e.target.closest('.apt'); if (!li) return;
-  if (e.target.closest('.del')) { favs = favs.filter(x => x !== li.dataset.id); LS.set('favs', favs); renderList(); toast('Đã xoá ' + li.dataset.id); return; }
+  if (e.target.closest('.del')) { favs = favs.filter(x => x !== li.dataset.id); saveFavs(); renderList(); toast('Đã xoá ' + li.dataset.id); return; }
   if (editing || e.target.closest('.handle')) return;
   openDetail(li.dataset.id);
 });
@@ -320,7 +370,7 @@ $('#btn-edit').onclick = () => { editing = !editing; $('#view-list').classList.t
     }
   });
   const end = () => { if (!drag) return; drag.li.style.transform = ''; drag.li.classList.remove('dragging'); drag = null;
-    favs = [...ul.children].map(li => li.dataset.id); LS.set('favs', favs); };
+    favs = [...ul.children].map(li => li.dataset.id); saveFavs(); };
   ul.addEventListener('pointerup', end); ul.addEventListener('pointercancel', end);
 })();
 
@@ -348,7 +398,7 @@ async function refreshAll(silent) {
   refreshing = (async () => {
     $('#btn-refresh').classList.add('spin');
     try { await fetchWx(ids); renderList(); if (current) renderDetail(); if (!silent) toast('Đã cập nhật'); }
-    catch (e) { toast('Lỗi tải dữ liệu: ' + e.message); }
+    catch (e) { renderList(); if (current) renderDetail(); toast('Lỗi tải dữ liệu – đang hiện bản lưu tạm'); }
     finally { $('#btn-refresh').classList.remove('spin'); refreshing = null; }
   })();
   return refreshing;
@@ -365,17 +415,17 @@ setInterval(() => { // cập nhật "phút trước" và đồng hồ
 function openDetail(id, push = true) {
   current = id;
   if (push) history.pushState({ id }, '', '#' + id);
-  $('#view-detail').classList.add('active'); $('#view-list').classList.add('behind');
+  $('#view-detail').classList.add('active'); $('#view-list').classList.add('behind'); document.body.classList.add('detail-open');
   $('#detail-scroller').scrollTop = 0;
   renderDetail();
   const m = cache.metar[id];
   if (!m || !m._hist || Date.now() - cache.ts > 60e3) fetchWx([id], 12).then(() => { renderDetail(); renderList(); }).catch(e => { $('#detail-body').insertAdjacentHTML('afterbegin', `<div class="err">Không tải được dữ liệu: ${esc(e.message)}</div>`); });
 }
-function closeDetail() { current = null; $('#view-detail').classList.remove('active'); $('#view-list').classList.remove('behind'); renderList(); }
+function closeDetail() { current = null; $('#view-detail').classList.remove('active'); $('#view-list').classList.remove('behind'); document.body.classList.remove('detail-open'); renderList(); window.onDetailClosed?.(); }
 $('#btn-back').onclick = () => { if (history.state?.id) history.back(); else { history.replaceState(null, '', location.pathname); closeDetail(); } };
 window.addEventListener('popstate', e => { if (e.state?.id) openDetail(e.state.id, false); else closeDetail(); });
 $('#btn-refresh').onclick = () => current && fetchWx([current], 12).then(() => { renderDetail(); renderList(); toast('Đã cập nhật'); }).catch(e => toast('Lỗi: ' + e.message));
-$('#btn-fav').onclick = () => { if (!current) return; if (favs.includes(current)) { favs = favs.filter(x => x !== current); toast('Đã bỏ khỏi yêu thích'); } else { favs.push(current); toast('Đã thêm vào yêu thích'); } LS.set('favs', favs); renderDetail(); renderList(); };
+$('#btn-fav').onclick = () => { if (!current) return; if (favs.includes(current)) { favs = favs.filter(x => x !== current); toast('Đã bỏ khỏi yêu thích'); } else { favs.push(current); toast('Đã thêm vào yêu thích'); } saveFavs(); renderDetail(); renderList(); };
 
 function updateClocks() {
   const a = aptInfo(current), now = new Date();
@@ -383,6 +433,7 @@ function updateClocks() {
   u.textContent = fmtUTC(now); l.textContent = fmtLocal(now, a.tz, a.lon);
 }
 function renderDetail() {
+  if (!current) return;
   const id = current, a = aptInfo(id), m = cache.metar[id], t = cache.taf[id];
   $('#d-title').textContent = id;
   $('#btn-fav').classList.toggle('on', favs.includes(id));
@@ -390,7 +441,7 @@ function renderDetail() {
   const p = m ? parseReport(m.rawOb) : null;
   const now = new Date();
   let html = `<div class="hero"><div class="codes"><span class="big">${id}</span><span class="iata">${esc(a.iata)}</span><span class="badge c-${cat}">${cat === 'UNK' ? '—' : cat}</span></div>
-    <div class="nm">${esc(a.full || a.name || '')}</div><div class="loc">${esc([a.city, a.country].filter(Boolean).join(', '))}${a.elev != null ? ' · Cao độ ' + a.elev + ' ft' : ''}${a.lat != null ? ` · ${a.lat.toFixed(3)}, ${a.lon.toFixed(3)}` : ''}</div></div>`;
+    <div class="nm">${esc(a.vi ? a.vi + ' – ' + (a.full || '') : (a.full || a.name || ''))}</div><div class="loc">${esc([a.city, a.vi ? '' : a.country].filter(Boolean).join(', '))}${a.elev != null ? ' · Cao độ ' + a.elev + ' ft' : ''}${a.lat != null ? ` · ${a.lat.toFixed(3)}, ${a.lon.toFixed(3)}` : ''}</div></div>`;
   // Đồng hồ & mặt trời
   let sun = '';
   if (a.lat != null) {
@@ -412,7 +463,7 @@ function renderDetail() {
     if (ui.metarRaw) html += `<div class="raw">${esc(m.rawOb)}</div>`;
     else {
       const rows = [];
-      rows.push(['Hạng bay', `<span class="badge c-${cat}">${cat}</span> ${CAT_VN[cat] ? CAT_VN[cat].split('– ')[1] || '' : ''}`]);
+      rows.push(['Hạng bay', `<span class="badge c-${cat}">${cat}</span> ${CAT_VN[cat] ? CAT_VN[cat].split('– ')[1] || '' : ''} <small>(${({ faa: 'chuẩn FAA', icao: 'chuẩn ICAO/EASA', nato: 'mã màu NATO' })[settings.std || 'faa']})</small>`]);
       rows.push(['Gió', p.wind ? (p.wind.dir != null && p.wind.spd ? windArrow(p.wind.dir) : '') + windText(p.wind) : '—']);
       rows.push(['Tầm nhìn', p.vis ? U.visM(p.vis.m, p.vis.plus) + (p.visMin ? `<br><small>Tối thiểu ${U.visM(p.visMin.m)} về phía ${esc(p.visMin.dir)}</small>` : '') : U.visSM(m.visib)]);
       if (p.rvr.length) rows.push(['Tầm nhìn đường băng', p.rvr.map(r => `RWY ${r.rwy}: ${rvrTxt(r.v, r.ft)}${r.v2 ? ' – ' + rvrTxt(r.v2, r.ft) : ''}${r.tr ? ' (' + ({ U: 'tăng', D: 'giảm', N: 'không đổi' })[r.tr] + ')' : ''}`).join('<br>')]);
@@ -438,12 +489,14 @@ function renderDetail() {
     else html += `<div class="note" style="padding:8px 12px 0">Hiệu lực ${fmtUTC(new Date(t.validTimeFrom * 1000), true)} → ${fmtUTC(new Date(t.validTimeTo * 1000), true)}</div>` + tafPeriods(t, a);
     html += `</div>`;
   } else html += `<div class="card"><div class="card-head"><h3>TAF</h3></div><div class="raw" style="color:var(--muted)">${cache.ts ? 'Sân bay này không có TAF hiện hành.' : 'Đang tải…'}</div></div>`;
+  html += `<div id="x-rwy"></div><div id="x-info"></div><div id="x-notam"></div>`;
   // Lịch sử
   if (m?._hist?.length > 1) {
     html += `<div class="card"><div class="card-head"><h3>METAR gần đây</h3></div><div class="hist">${m._hist.map(h => { const c = h.fltCat || metarCat(h); return `<div><span class="badge c-${c}">${c}</span><span>${esc(h.rawOb)}</span></div>`; }).join('')}</div></div>`;
   }
   html += `<p class="note">Giờ trong METAR/TAF là UTC (Z). Giờ mọc/lặn là giờ địa phương${a.tz ? ' (' + esc(a.tz) + ')' : ''}. Nguồn: aviationweather.gov.</p>`;
   $('#detail-body').innerHTML = html;
+  window.renderExtras?.(id, p);
 }
 function rvrTxt(v, ft) { const pre = v[0] === 'P' ? 'trên ' : v[0] === 'M' ? 'dưới ' : ''; const n = +v.replace(/[PM]/, ''); return pre + n.toLocaleString('vi-VN') + (ft ? ' ft' : ' m'); }
 $('#detail-body').addEventListener('click', e => {
@@ -468,7 +521,7 @@ function tafPeriods(t, a) {
       if (f.clouds?.length || f.vertVis != null) state.clouds = merged.clouds;
     }
     const visM = merged.visib == null ? null : String(merged.visib).includes('+') ? 99999 : parseFloat(merged.visib) * 1609.34;
-    const cat = flightCat(visM, ceilingOf(merged.clouds));
+    const cat = flightCat(visM, ceilingOf(merged.clouds), merged.clouds);
     const label = kind === 'BASE' ? 'CHÍNH' : kind === 'PROB' ? `PROB${prob}` : (prob ? `PROB${prob} ` : '') + kind;
     const typeVN = { BASE: 'Dự báo chính', FM: 'Từ', TEMPO: 'Tạm thời', BECMG: 'Chuyển dần', PROB: `Xác suất ${prob}%` }[kind] || kind;
     const from = new Date(f.timeFrom * 1000), to = new Date(f.timeTo * 1000);
@@ -518,7 +571,7 @@ $('#search-results').addEventListener('click', e => {
   const li = e.target.closest('li'); if (!li) return; const id = li.dataset.id;
   if (e.target.closest('.addbtn')) {
     if (favs.includes(id)) favs = favs.filter(x => x !== id); else { favs.push(id); toast('Đã thêm ' + id); fetchWx([id]).then(renderList).catch(() => {}); }
-    LS.set('favs', favs); renderList(); renderSearch($('#search-input').value); return;
+    saveFavs(); renderList(); renderSearch($('#search-input').value); return;
   }
   closeSearch(); openDetail(id);
 });
@@ -528,24 +581,35 @@ const SETTINGS_DEF = [
   ['Đơn vị', [['wind', 'Tốc độ gió', [['kt', 'kt'], ['kmh', 'km/h'], ['ms', 'm/s']]], ['press', 'Áp suất', [['hPa', 'hPa'], ['inHg', 'inHg']]],
     ['temp', 'Nhiệt độ', [['C', '°C'], ['F', '°F']]], ['vis', 'Tầm nhìn', [['m', 'm/km'], ['SM', 'SM']]]]],
   ['Hiển thị', [['theme', 'Giao diện', [['auto', 'Tự động'], ['light', 'Sáng'], ['dark', 'Tối']]], ['listTime', 'Giờ ở danh sách', [['utc', 'UTC'], ['local', 'Địa phương']]]]],
+  ['Chuẩn hạng bay', [['std', 'Chuẩn', [['faa', 'FAA'], ['icao', 'ICAO/EASA'], ['nato', 'NATO màu']]]]],
+  ['Thông báo', [['notify', 'Báo khi', [['off', 'Tắt'], ['cat', 'Đổi hạng bay'], ['all', 'Mọi bản tin mới']]]]],
   ['Làm mới', [['refresh', 'Tự làm mới', [[0, 'Tắt'], [5, '5′'], [10, '10′'], [15, '15′'], [30, '30′']]]]]
 ];
 function renderSettings() {
   $('#settings-body').innerHTML = SETTINGS_DEF.map(([g, items]) => `<div class="sgroup"><h4>${g}</h4>${items.map(([k, label, opts]) => `<div class="sitem"><label>${label}</label><div class="seg" data-set="${k}">${opts.map(([v, t]) => `<button data-v="${v}" class="${String(settings[k]) === String(v) ? 'on' : ''}">${t}</button>`).join('')}</div></div>`).join('')}</div>`).join('') +
-    `<div class="sgroup"><h4>Hạng bay</h4><div class="legend"><span><span class="badge c-VFR">VFR</span> trần &gt; 3.000 ft, tầm nhìn &gt; 5 SM</span><span><span class="badge c-MVFR">MVFR</span> 1.000–3.000 ft / 3–5 SM</span><span><span class="badge c-IFR">IFR</span> 500–999 ft / 1–3 SM</span><span><span class="badge c-LIFR">LIFR</span> &lt; 500 ft / &lt; 1 SM</span></div></div>
+    `<div class="sgroup"><h4>Giải thích hạng bay</h4><div class="legend">${legendHtml()}</div></div>
     <div class="sgroup"><h4>Thông tin</h4><div class="sitem"><label style="font-size:13px;color:var(--muted);line-height:1.5">Dữ liệu METAR/TAF từ Aviation Weather Center (NOAA) – aviationweather.gov. Mẹo: trên iPhone mở bằng Safari → Chia sẻ → «Thêm vào MH chính» để dùng như ứng dụng.<br>Danh sách yêu thích và cài đặt lưu trên thiết bị này.</label></div>
     <div class="sitem"><label>Khôi phục danh sách mặc định (VN)</label><button class="pill" id="btn-reset" style="padding:6px 12px;font-size:13px">Khôi phục</button></div></div>`;
+  window.renderSettingsExtras?.();
 }
 $('#btn-settings').onclick = () => { renderSettings(); $('#sheet-settings').hidden = false; };
 $('#btn-settings-close').onclick = () => { $('#sheet-settings').hidden = true; };
 $('#sheet-settings').addEventListener('click', e => {
   if (e.target.id === 'sheet-settings') { $('#sheet-settings').hidden = true; return; }
-  if (e.target.id === 'btn-reset') { favs = [...DEFAULT_FAVS]; LS.set('favs', favs); renderList(); refreshAll(true); toast('Đã khôi phục'); return; }
+  if (e.target.id === 'btn-reset') { favs = [...DEFAULT_FAVS]; saveFavs(); renderList(); refreshAll(true); toast('Đã khôi phục'); return; }
   const b = e.target.closest('.seg[data-set] button'); if (!b) return;
-  const k = b.parentElement.dataset.set; settings[k] = k === 'refresh' ? +b.dataset.v : b.dataset.v; LS.set('settings', settings);
+  const k = b.parentElement.dataset.set; const old = settings[k]; settings[k] = k === 'refresh' ? +b.dataset.v : b.dataset.v; saveSettings();
+  if (k === 'notify') window.onNotifySetting?.(settings[k], old);
   applyTheme(); schedule(); renderSettings(); renderList(); if (current) renderDetail();
 });
 
+function legendHtml() {
+  const std = settings.std || 'faa';
+  if (std === 'icao') return '<span><span class="badge c-VMC">VMC</span> tầm nhìn ≥ 5 km và trần mây ≥ 1.500 ft</span><span><span class="badge c-IMC">IMC</span> dưới mức trên</span>';
+  if (std === 'nato') return ['BLU', 'WHT', 'GRN', 'YLO', 'AMB', 'RED'].map(c => `<span><span class="badge c-${c}">${c}</span> ${CAT_VN[c].split('– ')[1]}</span>`).join('');
+  return '<span><span class="badge c-VFR">VFR</span> trần &gt; 3.000 ft, tầm nhìn &gt; 5 SM</span><span><span class="badge c-MVFR">MVFR</span> 1.000–3.000 ft / 3–5 SM</span><span><span class="badge c-IFR">IFR</span> 500–999 ft / 1–3 SM</span><span><span class="badge c-LIFR">LIFR</span> &lt; 500 ft / &lt; 1 SM</span>';
+}
+window.legendHtml = legendHtml;
 /* ---------- Tiện ích ---------- */
 let toastT;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2200); }
@@ -557,10 +621,12 @@ function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = fal
   renderList();
   try { await loadAirports(); } catch {}
   renderList();
+  await window.beforeInit?.();
   const hashId = location.hash.slice(1).toUpperCase();
   if (/^[A-Z0-9]{3,4}$/.test(hashId)) { history.replaceState(null, '', location.pathname); openDetail(hashId); }
   if (!cache.ts || !Object.keys(cache.metar).length) $('#apt-list').innerHTML = favs.map(() => '<li class="skeleton"></li>').join('');
   await refreshAll(true);
   schedule();
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  window.afterInit?.();
 })();

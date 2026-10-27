@@ -13,7 +13,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=1">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="styles.css?v=3">
 </head>
 <body>
 <div id="app">
@@ -38,6 +39,28 @@
       <p class="footnote">Dữ liệu: aviationweather.gov (NOAA). Chỉ dùng tham khảo – không thay thế briefing chính thức.</p>
     </div>
   </section>
+
+  <!-- Bản đồ -->
+  <section id="view-map" class="view" hidden>
+    <header class="topbar">
+      <span></span><h1>Bản đồ</h1>
+      <div class="tb-right"><button class="tb-icon" id="btn-map-fit" aria-label="Về sân bay yêu thích"><svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 3h-2.1A7 7 0 0 0 13 5.1V3h-2v2.1A7 7 0 0 0 5.1 11H3v2h2.1a7 7 0 0 0 5.9 5.9V21h2v-2.1a7 7 0 0 0 5.9-5.9H21z"/></svg></button></div>
+    </header>
+    <div id="map"></div>
+    <div class="map-ctl">
+      <button id="mc-radar" class="mc">Radar mưa</button>
+      <button id="mc-sat" class="mc">Mây vệ tinh</button>
+      <button id="mc-play" class="mc" hidden>▶︎</button>
+    </div>
+    <div class="map-time" id="map-time" hidden></div>
+    <div class="map-legend" id="map-legend"></div>
+  </section>
+
+  <nav class="tabbar" id="tabbar">
+    <button data-tab="list" class="on"><svg viewBox="0 0 24 24"><path d="M3 5h18v2H3zm0 6h18v2H3zm0 6h18v2H3z"/></svg>Sân bay</button>
+    <button data-tab="map"><svg viewBox="0 0 24 24"><path d="m15 5-6-2-6 2v16l6-2 6 2 6-2V3zm0 14-6-2V5l6 2z"/></svg>Bản đồ</button>
+  </nav>
+  <div class="banner" id="banner" hidden></div>
 
   <!-- Chi tiết -->
   <section id="view-detail" class="view">
@@ -76,6 +99,12 @@
   </div>
   <div class="toast" id="toast" hidden></div>
 </div>
-<script src="app.js?v=1"></script>
+<script src="vendor/tz.js"></script>
+<script src="vendor/qrcode.js"></script>
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="names.js?v=3"></script>
+<script src="app.js?v=3"></script>
+<script src="extras.js?v=3"></script>
+<script src="map.js?v=3"></script>
 </body>
 </html>

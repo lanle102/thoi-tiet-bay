@@ -1,0 +1,12 @@
+name: Kiểm tra thời tiết & gửi thông báo đẩy
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Gọi /api/push-check
+        run: curl -fsS --max-time 90 -H "x-cron-key: ${{ secrets.CRON_SECRET }}" https://thoi-tiet-bay.vercel.app/api/push-check
