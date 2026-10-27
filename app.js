@@ -111,7 +111,8 @@ function tzOffsetLabel(tz, d = new Date(), lon) {
   const o = Math.round((lon || 0) / 15); return 'UTC' + (o >= 0 ? '+' : '') + o + '*';
 }
 function fmtLocal(d, tz, lon, withDay) {
-  if (tz) { try { return new Intl.DateTimeFormat('vi-VN', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false, ...(withDay ? { day: '2-digit', month: '2-digit' } : {}) }).format(d); } catch {} }
+  if (tz) { try { const P = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', hourCycle: 'h23' }).formatToParts(d).map(x => [x.type, x.value]));
+    return (withDay ? P.day + '/' + P.month + ' ' : '') + P.hour + ':' + P.minute; } catch {} }
   const o = Math.round((lon || 0) / 15); const x = new Date(d.getTime() + o * 3600e3);
   return (withDay ? pad(x.getUTCDate()) + '/' + pad(x.getUTCMonth() + 1) + ' ' : '') + pad(x.getUTCHours()) + ':' + pad(x.getUTCMinutes());
 }

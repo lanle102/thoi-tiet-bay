@@ -1,3 +1,4 @@
+[hidden]{display:none!important}
 :root{
   --bg:#f2f3f7; --bg2:#ffffff; --card:#ffffff; --text:#0d1424; --muted:#6b7385; --line:rgba(0,0,0,.08);
   --accent:#0a84ff; --vfr:#22b14c; --mvfr:#2f7cf6; --ifr:#e5373b; --lifr:#b43ce0; --unk:#8a8f9c; --warn:#ff9f0a;
@@ -78,9 +79,9 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;paddin
 .card{background:var(--card);border-radius:14px;box-shadow:var(--shadow);margin:12px 0;overflow:hidden}
 .card-head{display:flex;align-items:center;gap:8px;padding:11px 12px;border-bottom:1px solid var(--line)}
 .card-head h3{margin:0;font-size:16px}
-.card-head .sub{font-size:12px;color:var(--muted)}
+.card-head .sub{font-size:12px;color:var(--muted);min-width:0}
 .seg{margin-left:auto;display:flex;background:var(--bg);border-radius:9px;padding:2px}
-.seg button{font-size:12.5px;padding:5px 10px;border-radius:7px;color:var(--muted);font-weight:600}
+.seg button{white-space:nowrap;font-size:12.5px;padding:5px 9px;border-radius:7px;color:var(--muted);font-weight:600}
 .seg button.on{background:var(--bg2);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.15)}
 .raw{font-family:var(--mono);font-size:14px;line-height:1.55;padding:12px;white-space:pre-wrap;word-break:break-word}
 .drows{padding:4px 12px 8px}
