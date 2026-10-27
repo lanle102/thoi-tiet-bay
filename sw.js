@@ -1,5 +1,5 @@
-const CACHE = 'ttb-v3';
-const SHELL = ['./', 'index.html', 'styles.css?v=3', 'app.js?v=3', 'extras.js?v=3', 'map.js?v=3', 'names.js?v=3', 'airports.json', 'manifest.webmanifest',
+const CACHE = 'ttb-v4';
+const SHELL = ['./', 'index.html', 'styles.css?v=4', 'app.js?v=4', 'extras.js?v=4', 'map.js?v=4', 'names.js?v=4', 'airports.json', 'manifest.webmanifest',
   'vendor/tz.js', 'vendor/qrcode.js', 'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 self.addEventListener('install', e => {

@@ -1,4 +1,4 @@
-name: Kiểm tra thời tiết & gửi thông báo đẩy
+name: Kiem tra thoi tiet va gui thong bao day
 on:
   schedule:
     - cron: '*/10 * * * *'
@@ -8,5 +8,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Gọi /api/push-check
-        run: curl -fsS --max-time 90 -H "x-cron-key: ${{ secrets.CRON_SECRET }}" https://thoi-tiet-bay.vercel.app/api/push-check
+      - name: Goi /api/push-check
+        env:
+          KEY: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl -fsS --max-time 90 -H "x-cron-key: $KEY" https://thoi-tiet-bay.vercel.app/api/push-check
