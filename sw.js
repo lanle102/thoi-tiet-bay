@@ -1,5 +1,5 @@
-const CACHE = 'ttb-v4';
-const SHELL = ['./', 'index.html', 'styles.css?v=4', 'app.js?v=4', 'extras.js?v=4', 'map.js?v=4', 'names.js?v=4', 'airports.json', 'manifest.webmanifest',
+const CACHE = 'ttb-v5';
+const SHELL = ['./', 'index.html', 'styles.css?v=5', 'app.js?v=5', 'extras.js?v=5', 'map.js?v=5', 'names.js?v=5', 'airports.json', 'manifest.webmanifest',
   'vendor/tz.js', 'vendor/qrcode.js', 'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 self.addEventListener('install', e => {
@@ -16,7 +16,11 @@ self.addEventListener('fetch', e => {
     // Dữ liệu thời tiết: ưu tiên mạng, mất mạng thì dùng bản đã lưu
     e.respondWith(fetch(e.request).then(r => {
       const copy = r.clone(); if (r.ok) caches.open(CACHE).then(c => c.put(e.request, copy)); return r;
-    }).catch(() => caches.match(e.request)));
+    }).catch(async () => {
+      const hit = await caches.match(e.request); if (!hit) return Response.error();
+      const h = new Headers(hit.headers); h.set('x-ttb-offline', '1');
+      return new Response(await hit.text(), { status: 200, headers: h });
+    }));
     return;
   }
   if (url.origin !== location.origin) return;

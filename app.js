@@ -82,6 +82,7 @@ async function api(type, params) {
       const txt = await r.text();
       const data = txt.trim() ? JSON.parse(txt) : [];
       if (!Array.isArray(data)) throw new Error('dữ liệu lạ');
+      if (r.headers.get('x-ttb-offline')) { setNet(false, '', 'mất kết nối'); return data; }
       srcOk = i; setNet(true, SOURCES[i].name);
       return data;
     } catch (e) { lastErr = e; }
