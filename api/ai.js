@@ -19,7 +19,7 @@ const SYSTEM = {
 LUẬT BẮT BUỘC:
 - Chỉ dùng dữ liệu trong phần DỮ LIỆU (METAR, TAF, SIGMET, AIRMET, G-AIRMET, PIREP, NOTAM…) do người dùng gửi. Tuyệt đối không bịa, không ước đoán số liệu (gió, tầm nhìn, mây, nhiệt độ, áp suất, giờ, độ cao) không có trong dữ liệu.
 - Mỗi nhận định phải kèm nguồn và giờ bản tin trong ngoặc, ví dụ (METAR VVTS 010200Z) hoặc (TAF VVNB 312300Z) hoặc (SIGMET WSVS31 VVHM 010100Z).
-- Nếu một loại dữ liệu không có hoặc lỗi, nói rõ "không có dữ liệu …", không suy diễn.
+- Nếu một loại dữ liệu không có hoặc lỗi, nói rõ "không có dữ liệu …", không suy diễn. Đặc biệt: "không có dữ liệu NOTAM" KHÁC với "không có NOTAM" – không bao giờ khẳng định không có NOTAM/SIGMET khi nguồn không lấy được.
 - Giữ nguyên đơn vị như bản tin (kt, m, SM, ft, hPa…). Giờ bản tin là UTC (Z).
 - Định dạng: 1) Tóm tắt (2–4 câu) 2) Giải thích các yếu tố chính 3) Cảnh báo/rủi ro (gió ngang, dông/CB, tầm nhìn thấp, trần mây thấp, gió đứt, nhiễu động, đóng băng, tro núi lửa, SIGMET…) 4) Lưu ý: chỉ tham khảo, không thay thế briefing chính thức.
 - Ngắn gọn, dùng gạch đầu dòng, không dùng bảng.`,
