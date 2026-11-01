@@ -1,5 +1,5 @@
 'use strict';
-/* Thời Tiết Bay v3: SIGMET/AIRMET/G-AIRMET/PIREP, briefing (luật + AI) cho sân bay và chặng bay. Mọi số liệu lấy từ bản tin thật. */
+/* Thời Tiết Bay v3: SIGMET/AIRMET/G-AIRMET/PIREP, briefing theo quy tắc cho sân bay và chặng bay. Mọi số liệu lấy từ bản tin thật. */
 const HZ = { // màu + tên tiếng Việt theo hiện tượng
   TS: ['#e5373b', 'Dông (TS)'], CONVECTIVE: ['#e5373b', 'Đối lưu/dông'], TURB: ['#ff9f0a', 'Nhiễu động (TURB)'], 'TURB-HI': ['#ff9f0a', 'Nhiễu động tầng cao'], 'TURB-LO': ['#ffb340', 'Nhiễu động tầng thấp'],
   ICE: ['#32ade6', 'Đóng băng (ICE)'], VA: ['#8e8e93', 'Tro núi lửa (VA)'], ASH: ['#8e8e93', 'Tro núi lửa'], TC: ['#d63af9', 'Bão nhiệt đới (TC)'], MTW: ['#bf9b30', 'Sóng núi (MTW)'],
@@ -136,7 +136,7 @@ window.initWxMapCtl = () => {
   map.on('moveend', () => { if (mapHz.pirep) { clearTimeout(window._pt); window._pt = setTimeout(drawPireps, 600); } });
 };
 
-/* ---------- Briefing dựa trên luật (không AI) ---------- */
+/* ---------- Briefing theo quy tắc ---------- */
 const SEV_ORDER = { info: 0, warn: 1, danger: 2 };
 const catRank = c => ({ VFR: 0, VMC: 0, BLU: 0, WHT: 0, MVFR: 1, GRN: 1, IFR: 2, IMC: 2, YLO: 2, AMB: 3, LIFR: 3, RED: 3 })[c] ?? -1;
 function metarTag(m) { return `METAR ${m.icaoId} ${(m.rawOb.match(/\b\d{6}Z\b/) || [''])[0]}`; }
@@ -197,46 +197,13 @@ const inPolyAny = (pt, h) => !h.line && h.rings.some(r => inPoly(pt, r));
 function briefHtml(items) {
   return `<ul class="brief">${items.map(it => `<li class="b-${it.sev}"><span class="bdot"></span><div>${it.text}<div class="bsrc">Nguồn: ${esc(it.src)}</div></div></li>`).join('')}</ul>`;
 }
-/* Gói dữ liệu thật gửi cho AI */
-function aiDataAirport(id, items) {
-  const m = cache.metar[id], t = cache.taf[id], a = aptInfo(id), L = [];
-  L.push(`SÂN BAY ${id}${a.name ? ' – ' + a.name : ''}${a.elev != null ? ', cao độ ' + a.elev + ' ft' : ''}`);
-  if (m) { L.push('METAR mới nhất (aviationweather.gov): ' + m.rawOb); (m._hist || []).slice(1, 4).forEach(h => L.push('METAR trước đó: ' + h.rawOb)); } else L.push('METAR: không có dữ liệu');
-  L.push(t ? 'TAF (aviationweather.gov): ' + t.rawTAF : 'TAF: không có dữ liệu');
-  if (items) L.push('PHÂN TÍCH TỰ ĐỘNG THEO LUẬT (đã tính từ dữ liệu trên):\n' + items.map(i => '- ' + i.text.replace(/<[^>]+>/g, '') + ' [' + i.src + ']').join('\n'));
-  if (a.lat != null) for (const h of hz.list) if (nearPoly([a.lat, a.lon], h, 25)) L.push(`${h.kind} liên quan (aviationweather.gov): ${(h.raw || '').replace(/\n/g, ' ')}`);
-  const n = notamCache?.[id]; L.push(n?.ok ? `NOTAM (${n.src}): ` + n.list.slice(0, 15).map(x => x.text.replace(/\s+/g, ' ')).join(' | ') : 'NOTAM: không có dữ liệu (nguồn NOTAM chưa truy cập được)');
-  return L.join('\n');
-}
-function mdLite(s) { return esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/^#+\s*(.+)$/gm, '<b>$1</b>').replace(/^\s*[-*•]\s+/gm, '• ').replace(/\n/g, '<br>'); }
-let aiInfo = null;
-async function aiStatus() { if (aiInfo && Date.now() - aiInfo.t < 10 * 60e3) return aiInfo; try { const r = await fetchT(BASE + '/api/ai', 8000); aiInfo = { ...(await r.json()), t: Date.now() }; } catch { aiInfo = { enabled: false, offline: true, t: Date.now() }; } return aiInfo; }
-async function askAI(data, question, mode = 'wx') {
-  if (!navigator.onLine) return { ok: false, error: 'Đang ngoại tuyến' };
-  try { const r = await fetchT(BASE + '/api/ai', 50000, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode, data, question }) }); return await r.json(); }
-  catch (e) { return { ok: false, error: e.name === 'AbortError' ? 'hết thời gian chờ' : e.message }; }
-}
-window.askAI = askAI; window.mdLite = mdLite; window.aiStatus = aiStatus;
-function aiBlock(key) { return `<div class="ai-box" id="ai-${key}"><button class="pill sm" data-ai="${key}">✨ Giải thích bằng AI</button><span class="ai-mode" id="aimode-${key}"></span><div class="ai-out" id="aiout-${key}"></div></div>`; }
-async function runAI(key, data, question) {
-  const out = document.getElementById('aiout-' + key), mode = document.getElementById('aimode-' + key); if (!out) return;
-  out.innerHTML = '<div class="muted">Đang hỏi AI…</div>';
-  const st = await aiStatus();
-  if (!st.enabled) { out.innerHTML = `<div class="muted">Chưa dùng được AI (${st.offline ? 'ngoại tuyến' : 'máy chủ chưa cấu hình khoá AI'}). Đang dùng bản tóm tắt theo luật ở trên.</div>`; return; }
-  const r = await askAI(data, question);
-  if (!r.ok) { out.innerHTML = `<div class="muted">AI lỗi: ${esc(r.error)}. Đang dùng bản tóm tắt theo luật ở trên.</div>`; return; }
-  mode.textContent = `Chế độ AI · ${r.provider} · ${r.model}`;
-  out.innerHTML = `<div class="ai-text">${mdLite(r.text)}</div><details class="ai-data"><summary>Dữ liệu đã gửi cho AI</summary><pre>${esc(data)}</pre></details><div class="note">AI chỉ được dùng dữ liệu trên; vẫn có thể sai – đối chiếu bản tin gốc.</div>`;
-}
-
 /* ---------- Thẻ briefing trong trang chi tiết ---------- */
 window.renderBrief = (id) => {
   const el = document.getElementById('x-brief'); if (!el) return;
   const paint = () => {
     if (current !== id || !document.getElementById('x-brief')) return;
     const items = briefAirport(id);
-    document.getElementById('x-brief').innerHTML = `<div class="card"><div class="card-head"><h3>Tóm tắt & cảnh báo</h3><span class="sub">Chế độ: luật (không AI)${hz.ts ? '' : ' · đang tải SIGMET…'}</span></div>${briefHtml(items)}${aiBlock('apt')}</div>`;
-    document.querySelector('[data-ai="apt"]').onclick = () => runAI('apt', aiDataAirport(id, briefAirport(id)), `Tóm tắt, giải thích và cảnh báo thời tiết cho sân bay ${id}.`);
+    document.getElementById('x-brief').innerHTML = `<div class="card"><div class="card-head"><h3>Tóm tắt & cảnh báo</h3>${hz.ts ? '' : '<span class="sub">đang tải SIGMET…</span>'}</div>${briefHtml(items)}</div>`;
   };
   paint();
   if (!hz.ts) loadHazards().then(paint).catch(paint);
@@ -274,16 +241,11 @@ async function buildRoute() {
   const card = (title, sub, html) => `<div class="card"><div class="card-head"><h3>${title}</h3><span class="sub">${sub}</span></div>${html}</div>`;
   const aptBadge = i => { const c = metarCat(cache.metar[i]); return `<span class="badge c-${c}">${c === 'UNK' ? '?' : c}</span>`; };
   out.innerHTML = `<div class="card"><div class="card-head"><h3>${dep} → ${arr}${alt ? ' (dự bị ' + alt + ')' : ''}</h3><span class="sub">${Math.round(dist).toLocaleString('vi-VN')} NM theo đường vòng lớn${isFinite(fltMin) ? ' · bay ' + Calc.fmtHM(fltMin) : ''}</span></div><div id="rt-map"></div>
-      <div class="note" style="padding:8px 12px">Chế độ: luật (không AI) · SIGMET/AIRMET/PIREP trong hành lang ±10 NM (PIREP ±50 NM) quanh đường bay. Dữ liệu: aviationweather.gov, lấy lúc ${fmtUTC(new Date(), true)}.${wx.status === 'rejected' ? ' <b>Lỗi tải METAR/TAF: ' + esc(wx.reason?.message) + '</b>' : ''}</div></div>` +
+      <div class="note" style="padding:8px 12px">SIGMET/AIRMET/PIREP trong hành lang ±10 NM (PIREP ±50 NM) quanh đường bay. Dữ liệu: aviationweather.gov, lấy lúc ${fmtUTC(new Date(), true)}.${wx.status === 'rejected' ? ' <b>Lỗi tải METAR/TAF: ' + esc(wx.reason?.message) + '</b>' : ''}</div></div>` +
     card(`Đi ${dep} ${aptBadge(dep)}`, esc(A.name || ''), briefHtml(bDep)) +
     card('Dọc đường bay', `${enroute.length} vùng SIGMET/AIRMET · ${pireps.length} PIREP`, (hzItems.length || prItems.length) ? briefHtml([...hzItems, ...prItems]) : `<ul class="brief"><li class="b-info"><span class="bdot"></span><div>Không có SIGMET/AIRMET/G-AIRMET đang hiệu lực cắt đường bay và không có PIREP đáng chú ý.${Object.keys(hz.err).length ? ' <b>Lưu ý: lỗi tải ' + Object.keys(hz.err).join(', ') + '.</b>' : ''}<div class="bsrc">Nguồn: aviationweather.gov (International SIGMET, SIGMET/AIRMET Hoa Kỳ, G-AIRMET, PIREP)</div></div></li></ul>`) +
     card(`Đến ${arr} ${aptBadge(arr)}`, esc(B.name || ''), briefHtml(bArr)) +
-    (alt ? card(`Dự bị ${alt} ${aptBadge(alt)}`, esc(aptInfo(alt).name || ''), briefHtml(bAlt)) : '') +
-    `<div class="card"><div class="card-head"><h3>AI tóm tắt chặng bay</h3></div>${aiBlock('route')}</div>`;
-  const data = [aiDataAirport(dep, bDep), aiDataAirport(arr, bArr), alt ? aiDataAirport(alt, bAlt) : '',
-    `DỌC ĐƯỜNG BAY ${dep}-${arr} (${Math.round(dist)} NM):`, enroute.length ? enroute.map(h => `${h.kind} (aviationweather.gov): ${(h.raw || '').replace(/\n/g, ' ')}`).join('\n') : 'Không có SIGMET/AIRMET cắt đường bay.',
-    pireps.length ? 'PIREP gần đường bay: ' + pireps.slice(0, 15).map(p => p.rawOb).join(' | ') : 'PIREP: không có.'].filter(Boolean).join('\n\n');
-  document.querySelector('[data-ai="route"]').onclick = () => runAI('route', data, `Briefing thời tiết chặng bay ${dep} đi ${arr}${alt ? ', dự bị ' + alt : ''}: tóm tắt, giải thích, cảnh báo (gồm SIGMET dọc đường).`);
+    (alt ? card(`Dự bị ${alt} ${aptBadge(alt)}`, esc(aptInfo(alt).name || ''), briefHtml(bAlt)) : '');
   // bản đồ nhỏ
   if (routeMap) { routeMap.remove(); routeMap = null; }
   routeMap = L.map('rt-map', { zoomControl: false, attributionControl: true });

@@ -1,4 +1,4 @@
-const CACHE = 'ttb-v7';
+const CACHE = 'ttb-v8';
 const SHELL = ['./', 'index.html', 'styles.css?v=7', 'calc.js?v=7', 'app.js?v=7', 'extras.js?v=7', 'map.js?v=7', 'names.js?v=7', 'wx2.js?v=7', 'track.js?v=7', 'tools.js?v=7', 'laws.js?v=7', 'airports.json', 'manifest.webmanifest', 'laws/index.json',
   'vendor/tz.js', 'vendor/qrcode.js', 'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
@@ -12,7 +12,7 @@ self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
   if (url.pathname.includes('/api/') || url.pathname.includes('/thoi-tiet-bay/notams/')) {
-    if (/\/api\/(sync|push|ai|adsb)/.test(url.pathname)) return; // không lưu tạm dữ liệu thời gian thực/AI
+    if (/\/api\/(sync|push|adsb)/.test(url.pathname)) return; // không lưu tạm dữ liệu thời gian thực
     // Dữ liệu thời tiết: ưu tiên mạng, mất mạng thì dùng bản đã lưu
     e.respondWith(fetch(e.request).then(r => {
       const copy = r.clone(); if (r.ok) caches.open(CACHE).then(c => c.put(e.request, copy)); return r;
