@@ -1,0 +1,25 @@
+name: Cap nhat kho luat hang ngay
+on:
+  schedule:
+    - cron: '17 20 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Cai poppler (pdftotext)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
+      - name: Xay kho luat
+        run: node scripts/build-laws.mjs laws
+      - name: Commit neu thay doi
+        run: |
+          git config user.name "thoi-tiet-bay-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add laws
+          if git diff --cached --quiet; then echo "Khong co thay doi"; else git commit -m "Cap nhat kho luat $(date -u +%F)" && git pull --rebase -q && git push; fi

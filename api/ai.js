@@ -1,6 +1,6 @@
 // AI tóm tắt/giải thích/cảnh báo thời tiết & trả lời luật – CHỈ dựa trên dữ liệu thật do app gửi kèm.
 // Nhà cung cấp (theo thứ tự): OPENAI_API_KEY (+ OPENAI_BASE_URL, tương thích OpenAI) → AI_GATEWAY_API_KEY → OIDC của Vercel (AI Gateway).
-// AI_MODEL: tên model (mặc định gpt-4o-mini / openai/gpt-4o-mini).
+// AI_MODEL: tên model (mặc định gpt-4.1-mini / openai/gpt-4.1-mini).
 async function readBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
   if (typeof req.body === 'string') return JSON.parse(req.body || '{}');
@@ -9,9 +9,9 @@ async function readBody(req) {
 function cors(res) { res.setHeader('Access-Control-Allow-Origin', '*'); res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS'); res.setHeader('Access-Control-Allow-Headers', 'Content-Type'); res.setHeader('Cache-Control', 'no-store'); }
 const hits = new Map();
 function provider(req) {
-  if (process.env.OPENAI_API_KEY) return { name: 'OpenAI-compatible', url: (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '') + '/chat/completions', key: process.env.OPENAI_API_KEY, model: process.env.AI_MODEL || 'gpt-4o-mini' };
+  if (process.env.OPENAI_API_KEY) return { name: 'OpenAI-compatible', url: (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '') + '/chat/completions', key: process.env.OPENAI_API_KEY, model: process.env.AI_MODEL || 'gpt-4.1-mini' };
   const gw = process.env.AI_GATEWAY_API_KEY || req.headers['x-vercel-oidc-token'] || process.env.VERCEL_OIDC_TOKEN;
-  if (gw) return { name: 'Vercel AI Gateway', url: 'https://ai-gateway.vercel.sh/v1/chat/completions', key: gw, model: process.env.AI_MODEL || 'openai/gpt-4o-mini' };
+  if (gw) return { name: 'Vercel AI Gateway', url: 'https://ai-gateway.vercel.sh/v1/chat/completions', key: gw, model: process.env.AI_MODEL || 'openai/gpt-4.1-mini' };
   return null;
 }
 const SYSTEM = {

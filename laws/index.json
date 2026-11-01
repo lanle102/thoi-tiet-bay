@@ -1,0 +1,187 @@
+{
+ "built": "2026-11-01T02:25:02.755Z",
+ "sources": [
+  {
+   "id": "cfr1",
+   "group": "FAA",
+   "title": "14 CFR PART 1—DEFINITIONS AND ABBREVIATIONS",
+   "lang": "en",
+   "asOf": "2026-10-29",
+   "url": "https://www.ecfr.gov/current/title-14/part-1",
+   "license": "Văn bản Chính phủ Hoa Kỳ – phạm vi công cộng (public domain). Nguồn: eCFR (api.ecfr.gov). eCFR là bản tổng hợp chính thức nhưng không phải bản pháp lý chính thức; bản pháp lý là Federal Register/CFR in.",
+   "count": 3,
+   "chunks": [
+    "c/cfr1-0.json"
+   ]
+  },
+  {
+   "id": "cfr61",
+   "group": "FAA",
+   "title": "14 CFR PART 61—CERTIFICATION: PILOTS, FLIGHT INSTRUCTORS, AND GROUND INSTRUCTORS",
+   "lang": "en",
+   "asOf": "2026-10-29",
+   "url": "https://www.ecfr.gov/current/title-14/part-61",
+   "license": "Văn bản Chính phủ Hoa Kỳ – phạm vi công cộng (public domain). Nguồn: eCFR (api.ecfr.gov). eCFR là bản tổng hợp chính thức nhưng không phải bản pháp lý chính thức; bản pháp lý là Federal Register/CFR in.",
+   "count": 141,
+   "chunks": [
+    "c/cfr61-0.json",
+    "c/cfr61-1.json"
+   ]
+  },
+  {
+   "id": "cfr91",
+   "group": "FAA",
+   "title": "14 CFR PART 91—GENERAL OPERATING AND FLIGHT RULES",
+   "lang": "en",
+   "asOf": "2026-10-29",
+   "url": "https://www.ecfr.gov/current/title-14/part-91",
+   "license": "Văn bản Chính phủ Hoa Kỳ – phạm vi công cộng (public domain). Nguồn: eCFR (api.ecfr.gov). eCFR là bản tổng hợp chính thức nhưng không phải bản pháp lý chính thức; bản pháp lý là Federal Register/CFR in.",
+   "count": 273,
+   "chunks": [
+    "c/cfr91-0.json",
+    "c/cfr91-1.json"
+   ]
+  },
+  {
+   "id": "cfr121",
+   "group": "FAA",
+   "title": "14 CFR PART 121—OPERATING REQUIREMENTS: DOMESTIC, FLAG, AND SUPPLEMENTAL OPERATIONS",
+   "lang": "en",
+   "asOf": "2026-10-29",
+   "url": "https://www.ecfr.gov/current/title-14/part-121",
+   "license": "Văn bản Chính phủ Hoa Kỳ – phạm vi công cộng (public domain). Nguồn: eCFR (api.ecfr.gov). eCFR là bản tổng hợp chính thức nhưng không phải bản pháp lý chính thức; bản pháp lý là Federal Register/CFR in.",
+   "count": 396,
+   "chunks": [
+    "c/cfr121-0.json",
+    "c/cfr121-1.json",
+    "c/cfr121-2.json"
+   ]
+  },
+  {
+   "id": "cfr135",
+   "group": "FAA",
+   "title": "14 CFR PART 135—OPERATING REQUIREMENTS: COMMUTER AND ON DEMAND OPERATIONS AND RULES GOVERNING PERSONS ON BOARD SUCH AIRCRAFT",
+   "lang": "en",
+   "asOf": "2026-10-29",
+   "url": "https://www.ecfr.gov/current/title-14/part-135",
+   "license": "Văn bản Chính phủ Hoa Kỳ – phạm vi công cộng (public domain). Nguồn: eCFR (api.ecfr.gov). eCFR là bản tổng hợp chính thức nhưng không phải bản pháp lý chính thức; bản pháp lý là Federal Register/CFR in.",
+   "count": 207,
+   "chunks": [
+    "c/cfr135-0.json",
+    "c/cfr135-1.json"
+   ]
+  },
+  {
+   "id": "aim",
+   "group": "FAA",
+   "title": "FAA Aeronautical Information Manual (AIM)",
+   "lang": "en",
+   "asOf": "2026-11-01",
+   "url": "https://www.faa.gov/air_traffic/publications/atpubs/aim_html/",
+   "license": "Tài liệu Chính phủ Hoa Kỳ (FAA) – phạm vi công cộng.",
+   "count": 432,
+   "chunks": [
+    "c/aim-0.json",
+    "c/aim-1.json",
+    "c/aim-2.json",
+    "c/aim-3.json",
+    "c/aim-4.json"
+   ]
+  },
+  {
+   "id": "vnlaw",
+   "group": "Việt Nam",
+   "title": "Luật Hàng không dân dụng Việt Nam số 130/2025/QH15 (hiệu lực 01/07/2026)",
+   "lang": "vi",
+   "asOf": "2025-12-10",
+   "url": "https://congbao.chinhphu.vn/van-ban/luat-so-130-2025-qh15-468690.htm",
+   "license": "Văn bản quy phạm pháp luật – không thuộc đối tượng bảo hộ quyền tác giả (Điều 15 Luật Sở hữu trí tuệ). Nguồn: Công báo nước CHXHCN Việt Nam số 39, ngày 22/01/2026. Văn bản trích từ PDF, có thể lỗi ngắt dòng – đối chiếu bản gốc.",
+   "count": 107,
+   "chunks": [
+    "c/vnlaw-0.json"
+   ]
+  }
+ ],
+ "linksOnly": [
+  {
+   "group": "ICAO (bản quyền – chỉ tên + link)",
+   "items": [
+    [
+     "Annex 2 – Rules of the Air",
+     "https://store.icao.int/en/annexes/annex-2"
+    ],
+    [
+     "Annex 3 – Meteorological Service for International Air Navigation",
+     "https://store.icao.int/en/annexes/annex-3"
+    ],
+    [
+     "Annex 6 – Operation of Aircraft",
+     "https://store.icao.int/en/annexes/annex-6"
+    ],
+    [
+     "Annex 11 – Air Traffic Services",
+     "https://store.icao.int/en/annexes/annex-11"
+    ],
+    [
+     "Annex 1 – Personnel Licensing",
+     "https://store.icao.int/en/annexes/annex-1"
+    ],
+    [
+     "Doc 4444 – PANS-ATM",
+     "https://store.icao.int/en/procedures-for-air-navigation-services-air-traffic-management-doc-4444"
+    ],
+    [
+     "Doc 8168 – PANS-OPS",
+     "https://store.icao.int/en/search?q=8168"
+    ],
+    [
+     "ICAO – Tài liệu công khai miễn phí (eLibrary/Documents)",
+     "https://www.icao.int/publications/Pages/default.aspx"
+    ],
+    [
+     "Công ước Chicago (Doc 7300) – bản công khai trên trang ICAO",
+     "https://www.icao.int/publications/Documents/7300_cons.pdf"
+    ]
+   ]
+  },
+  {
+   "group": "EASA (chỉ trích dẫn + link – điều khoản EASA không cho phép tái phân phối nguyên văn trong app)",
+   "items": [
+    [
+     "Easy Access Rules for Air Operations (Reg. (EU) 965/2012)",
+     "https://www.easa.europa.eu/en/document-library/easy-access-rules/easy-access-rules-air-operations"
+    ],
+    [
+     "Easy Access Rules for Aircrew (Part-FCL, Reg. (EU) 1178/2011)",
+     "https://www.easa.europa.eu/en/document-library/easy-access-rules/easy-access-rules-aircrew-regulation-eu-no-11782011"
+    ],
+    [
+     "Easy Access Rules for Standardised European Rules of the Air (SERA)",
+     "https://www.easa.europa.eu/en/document-library/easy-access-rules/easy-access-rules-standardised-european-rules-air-sera"
+    ],
+    [
+     "Văn bản gốc trên EUR-Lex (miễn phí)",
+     "https://eur-lex.europa.eu/eli/reg/2012/965/oj"
+    ]
+   ]
+  },
+  {
+   "group": "Việt Nam – văn bản khác (link)",
+   "items": [
+    [
+     "Cục Hàng không Việt Nam – Văn bản pháp quy",
+     "https://caa.gov.vn/van-ban.htm"
+    ],
+    [
+     "AIP Việt Nam (VATM)",
+     "https://vnaic.vn/"
+    ],
+    [
+     "Cơ sở dữ liệu quốc gia về văn bản pháp luật",
+     "https://vbpl.vn/"
+    ]
+   ]
+  }
+ ],
+ "errors": []
+}

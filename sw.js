@@ -1,5 +1,5 @@
-const CACHE = 'ttb-v5';
-const SHELL = ['./', 'index.html', 'styles.css?v=5', 'app.js?v=5', 'extras.js?v=5', 'map.js?v=5', 'names.js?v=5', 'airports.json', 'manifest.webmanifest',
+const CACHE = 'ttb-v6';
+const SHELL = ['./', 'index.html', 'styles.css?v=6', 'calc.js?v=6', 'app.js?v=6', 'extras.js?v=6', 'map.js?v=6', 'names.js?v=6', 'wx2.js?v=6', 'track.js?v=6', 'tools.js?v=6', 'laws.js?v=6', 'airports.json', 'manifest.webmanifest', 'laws/index.json',
   'vendor/tz.js', 'vendor/qrcode.js', 'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 self.addEventListener('install', e => {
@@ -11,8 +11,8 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
-  if (url.pathname.includes('/api/')) {
-    if (url.pathname.includes('/api/sync') || url.pathname.includes('/api/push')) return;
+  if (url.pathname.includes('/api/') || url.pathname.includes('/thoi-tiet-bay/notams/')) {
+    if (/\/api\/(sync|push|ai|adsb)/.test(url.pathname)) return; // không lưu tạm dữ liệu thời gian thực/AI
     // Dữ liệu thời tiết: ưu tiên mạng, mất mạng thì dùng bản đã lưu
     e.respondWith(fetch(e.request).then(r => {
       const copy = r.clone(); if (r.ok) caches.open(CACHE).then(c => c.put(e.request, copy)); return r;
@@ -23,7 +23,8 @@ self.addEventListener('fetch', e => {
     }));
     return;
   }
-  if (url.origin !== location.origin) return;
+  // Kho luật/NOTAM tĩnh trên GitHub Pages (khi app chạy ở Vercel): dùng bản lưu, cập nhật nền
+  if (url.origin !== location.origin && !/^https:\/\/lanle102\.github\.io\/thoi-tiet-bay\/(laws|notams)\//.test(url.href)) return;
   // Vỏ ứng dụng + dữ liệu tĩnh: dùng cache, cập nhật nền
   e.respondWith(caches.match(e.request).then(hit => {
     const net = fetch(e.request).then(r => { if (r.ok) { const c2 = r.clone(); caches.open(CACHE).then(c => c.put(e.request, c2)); } return r; }).catch(() => hit);

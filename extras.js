@@ -10,9 +10,11 @@ document.getElementById('tabbar').addEventListener('click', e => {
   const b = e.target.closest('button[data-tab]'); if (!b) return;
   tab = b.dataset.tab;
   document.querySelectorAll('#tabbar button').forEach(x => x.classList.toggle('on', x === b));
-  document.getElementById('view-list').hidden = tab !== 'list';
-  document.getElementById('view-map').hidden = tab !== 'map';
+  for (const t of ['list', 'map', 'track', 'tools', 'laws']) document.getElementById('view-' + t).hidden = tab !== t;
   if (tab === 'map') window.showMap?.();
+  if (tab === 'track') window.showTrack?.();
+  if (tab === 'tools') window.showTools?.();
+  if (tab === 'laws') window.showLaws?.();
 });
 
 /* ---------- Dữ liệu sân bay: đường băng + tần số ---------- */
@@ -102,12 +104,16 @@ async function loadNotam(icao) {
     const j = await r.json();
     res = r.ok && j.ok !== false ? { ok: true, list: j.notams || [], src: j.source } : { ok: false, err: j.error || 'HTTP ' + r.status };
   } catch (e) { res = { ok: false, err: e.name === 'AbortError' ? 'hết thời gian chờ' : e.message }; }
+  if (!res.ok) { // dự phòng: bản NOTAM tĩnh do GitHub Actions lấy từ FAA NOTAM Search (nếu FAA cho phép)
+    try { const r = await fetchT('https://lanle102.github.io/thoi-tiet-bay/notams/' + icao + '.json', 10000); if (r.ok) { const j = await r.json(); const h = (Date.now() - Date.parse(j.fetched)) / 3600e3;
+      if (h < 12) res = { ok: true, list: j.notams || [], src: `${j.source}, lấy lúc ${fmtUTC(new Date(j.fetched), true)} (${Math.round(h * 10) / 10} giờ trước)` }; } } catch {}
+  }
   res.t = Date.now(); notamCache[icao] = res; return res;
 }
 function notamLinks(icao) {
   const vn = icao.startsWith('VV');
   return `<a class="linkbtn" href="https://notams.aim.faa.gov/notamSearch/nsapp.html#/" target="_blank" rel="noopener">FAA NOTAM Search ↗</a>` +
-    (vn ? `<a class="linkbtn" href="https://aim.vatm.vn/" target="_blank" rel="noopener">AIS Việt Nam (VATM) ↗</a>` : '') +
+    (vn ? `<a class="linkbtn" href="https://vnaic.vn/" target="_blank" rel="noopener">AIS Việt Nam (VNAIC) ↗</a>` : '') +
     `<a class="linkbtn" href="https://www.google.com/search?q=${icao}+NOTAM" target="_blank" rel="noopener">Tìm NOTAM ${icao} ↗</a>`;
 }
 function notamCard(icao, n) {
@@ -115,8 +121,8 @@ function notamCard(icao, n) {
   if (!n) body = `<div class="raw" style="color:var(--muted)">Đang tải NOTAM…</div>`;
   else if (n.ok && n.list.length) body = n.list.slice(0, 60).map(x => `<div class="notam"><div class="nh"><b>${esc(x.id || '')}</b> ${esc(x.loc || '')} · ${esc(x.start || '')} → ${esc(x.end || '')}</div><pre>${esc(x.text || '')}</pre></div>`).join('');
   else if (n.ok) body = `<div class="raw" style="color:var(--muted)">Không có NOTAM hiện hành.</div>`;
-  else body = `<div class="notam"><div style="font-size:13.5px;line-height:1.5">Chưa lấy được NOTAM tự động (${esc(n.err)}).<br>
-    <small>Nguồn NOTAM công khai không cần khoá duy nhất là FAA NOTAM Search, nhưng hệ thống chống bot của FAA chặn mọi truy cập từ máy chủ (proxy Vercel). Các API khác (FAA NMS, ICAO API Data Service…) đều cần đăng ký khoá. App không hiện NOTAM giả – bấm để mở nguồn chính thức:</small></div><div style="margin-top:6px">${notamLinks(icao)}</div></div>`;
+  else body = `<div class="notam"><div style="font-size:13.5px;line-height:1.5"><b>Không có NOTAM tự động</b> (${esc(n.err)}).<br>
+    <small>FAA NOTAM Search chặn truy cập từ máy chủ đám mây (HTTP 403). FAA NOTAM API chính thức cần khoá miễn phí đăng ký tại api.faa.gov – khi chủ app đặt biến môi trường <code>FAA_NOTAM_CLIENT_ID</code> và <code>FAA_NOTAM_CLIENT_SECRET</code> trên Vercel, NOTAM sẽ tự hiện ở đây. App không hiện NOTAM giả – mở nguồn chính thức:</small></div><div style="margin-top:6px">${notamLinks(icao)}</div></div>`;
   return `<div class="card" id="card-notam"><div class="card-head"><h3>NOTAM</h3><span class="sub">${n?.ok ? esc(n.src || '') : ''}</span></div>${body}</div>`;
 }
 window.renderExtras = (icao, p) => {
@@ -129,7 +135,7 @@ window.renderExtras = (icao, p) => {
     el('x-notam').innerHTML = notamCard(icao, notamCache[icao]);
   };
   paint();
-  if (!(icao in apData)) loadAp(icao).then(paint);
+  if (!(icao in apData)) loadAp(icao).then(() => { paint(); if (current === icao) window.renderBrief?.(icao); });
   if (!notamCache[icao] || Date.now() - notamCache[icao].t > 10 * 60e3) loadNotam(icao).then(paint);
 };
 

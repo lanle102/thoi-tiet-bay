@@ -14,7 +14,7 @@
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
-<link rel="stylesheet" href="styles.css?v=5">
+<link rel="stylesheet" href="styles.css?v=6">
 </head>
 <body>
 <div id="app">
@@ -24,6 +24,7 @@
       <button class="tb-btn" id="btn-edit">Sửa</button>
       <h1>Thời Tiết Bay</h1>
       <div class="tb-right">
+        <button class="tb-icon" id="btn-route" aria-label="Briefing chặng bay"><svg viewBox="0 0 24 24"><path d="M6 3a3 3 0 0 1 3 3c0 2.2-3 6-3 6S3 8.2 3 6a3 3 0 0 1 3-3zm0 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm12 7a3 3 0 0 1 3 3c0 2.2-3 6-3 6s-3-3.8-3-6a3 3 0 0 1 3-3zm0 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2zM7 14h4a2 2 0 0 0 0-4h-.5V8h.5a4 4 0 0 1 0 8H7a1 1 0 0 0 0 2h6v2H7a3 3 0 0 1 0-6z"/></svg></button>
         <button class="tb-icon" id="btn-settings" aria-label="Cài đặt"><svg viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7zm7.4-2.5a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3h-4l-.3 2.6a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1L11 21h4l.3-2.6a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5z"/></svg></button>
         <button class="tb-icon" id="btn-add" aria-label="Thêm sân bay"><svg viewBox="0 0 24 24"><path d="M11 4h2v7h7v2h-7v7h-2v-7H4v-2h7z"/></svg></button>
       </div>
@@ -36,7 +37,7 @@
         <p>Chưa có sân bay yêu thích.</p>
         <button class="pill" id="btn-empty-add">+ Thêm sân bay</button>
       </div>
-      <p class="footnote">Dữ liệu: aviationweather.gov (NOAA). Chỉ dùng tham khảo – không thay thế briefing chính thức.</p>
+      <p class="footnote">Dữ liệu: aviationweather.gov (NOAA/AWC), dự phòng OGIMET. Chỉ dùng tham khảo – không thay thế briefing chính thức.</p>
     </div>
   </section>
 
@@ -56,11 +57,56 @@
     <div class="map-legend" id="map-legend"></div>
   </section>
 
+  <!-- Máy bay -->
+  <section id="view-track" class="view tabview" hidden>
+    <header class="topbar"><span></span><h1>Theo dõi máy bay</h1><div class="tb-right"><button class="tb-icon" id="tr-locate" aria-label="Quanh sân bay"><svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 3h-2.1A7 7 0 0 0 13 5.1V3h-2v2.1A7 7 0 0 0 5.1 11H3v2h2.1a7 7 0 0 0 5.9 5.9V21h2v-2.1a7 7 0 0 0 5.9-5.9H21z"/></svg></button></div></header>
+    <div class="tr-search">
+      <div class="tr-row"><input id="tr-q" class="tinput" placeholder="Callsign, số hiệu chuyến (VN220), số đăng ký (VN-A321), hex (888123)" autocomplete="off" autocapitalize="characters" spellcheck="false">
+        <select id="tr-by" class="tsel"><option value="auto">Tự nhận</option><option value="callsign">Callsign</option><option value="flight">Số hiệu chuyến</option><option value="reg">Số đăng ký</option><option value="hex">Hex ICAO</option></select><button class="pill sm" id="tr-go">Tìm</button></div>
+      <div class="tr-row"><span class="small">Quanh sân bay</span><input id="tr-apt" class="tinput short" placeholder="VVTS" maxlength="4" autocapitalize="characters"><select id="tr-r" class="tsel"><option value="25">25 NM</option><option value="50" selected>50 NM</option><option value="100">100 NM</option><option value="200">200 NM</option></select><button class="pill sm ghost" id="tr-near">Xem</button></div>
+    </div>
+    <div id="tr-map"></div>
+    <div class="tr-panel" id="tr-panel"></div>
+  </section>
+
+  <!-- Công cụ -->
+  <section id="view-tools" class="view tabview" hidden>
+    <header class="topbar"><span></span><h1>Công cụ</h1><span></span></header>
+    <div class="tool-tabs seg" id="tool-tabs"><button data-t="time" class="on">Giờ phút</button><button data-t="unit">Quy đổi</button><button data-t="perf">Hiệu năng</button></div>
+    <div class="scroller" id="tools-body"></div>
+  </section>
+
+  <!-- Luật -->
+  <section id="view-laws" class="view tabview" hidden>
+    <header class="topbar"><span></span><h1>Kho luật hàng không</h1><span></span></header>
+    <div class="scroller" id="laws-body"></div>
+  </section>
+
   <nav class="tabbar" id="tabbar">
     <button data-tab="list" class="on"><svg viewBox="0 0 24 24"><path d="M3 5h18v2H3zm0 6h18v2H3zm0 6h18v2H3z"/></svg>Sân bay</button>
     <button data-tab="map"><svg viewBox="0 0 24 24"><path d="m15 5-6-2-6 2v16l6-2 6 2 6-2V3zm0 14-6-2V5l6 2z"/></svg>Bản đồ</button>
+    <button data-tab="track"><svg viewBox="0 0 24 24"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/></svg>Máy bay</button>
+    <button data-tab="tools"><svg viewBox="0 0 24 24"><path d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm0 2v4h10V4zm1 7v2h2v-2zm4 0v2h2v-2zm4 0v2h2v-2zM8 15v2h2v-2zm4 0v2h2v-2zm4 0v6h2v-6zM8 19v2h6v-2z"/></svg>Công cụ</button>
+    <button data-tab="laws"><svg viewBox="0 0 24 24"><path d="M12 3 2 8l10 5 8-4v6h2V8zM6 12.2V16c0 1.7 2.7 3 6 3s6-1.3 6-3v-3.8l-6 3z"/></svg>Luật</button>
   </nav>
   <div class="banner" id="banner" hidden></div>
+
+  <!-- Chặng bay -->
+  <section id="view-route" class="view slide">
+    <header class="topbar">
+      <button class="tb-btn back" id="btn-route-back"><svg viewBox="0 0 24 24"><path d="M15.4 4.6 14 3.2 5.2 12l8.8 8.8 1.4-1.4L8 12z"/></svg>Danh sách</button>
+      <h1>Briefing chặng bay</h1><span></span>
+    </header>
+    <div class="scroller">
+      <div class="card rt-form">
+        <div class="rt-grid"><label>Đi<input id="rt-dep" class="tinput" maxlength="4" autocapitalize="characters" placeholder="VVTS"></label><button class="tb-icon" id="rt-swap" aria-label="Đổi chiều">⇄</button><label>Đến<input id="rt-arr" class="tinput" maxlength="4" autocapitalize="characters" placeholder="VVNB"></label></div>
+        <div class="rt-grid"><label>Dự bị (tuỳ chọn)<input id="rt-alt" class="tinput" maxlength="4" autocapitalize="characters" placeholder="VVDN"></label><label>Thời gian bay (HH:MM, tuỳ chọn)<input id="rt-time" class="tinput" placeholder="2:05" inputmode="decimal"></label></div>
+        <button class="pill" id="rt-go">Lập briefing</button>
+      </div>
+      <div id="rt-out"></div>
+      <p class="note">Briefing tự động chỉ dùng tham khảo – không thay thế briefing khí tượng/NOTAM chính thức.</p>
+    </div>
+  </section>
 
   <!-- Chi tiết -->
   <section id="view-detail" class="view">
@@ -102,9 +148,14 @@
 <script src="vendor/tz.js"></script>
 <script src="vendor/qrcode.js"></script>
 <script src="vendor/leaflet/leaflet.js"></script>
-<script src="names.js?v=5"></script>
-<script src="app.js?v=5"></script>
-<script src="extras.js?v=5"></script>
-<script src="map.js?v=5"></script>
+<script src="calc.js?v=6"></script>
+<script src="names.js?v=6"></script>
+<script src="app.js?v=6"></script>
+<script src="extras.js?v=6"></script>
+<script src="map.js?v=6"></script>
+<script src="wx2.js?v=6"></script>
+<script src="track.js?v=6"></script>
+<script src="tools.js?v=6"></script>
+<script src="laws.js?v=6"></script>
 </body>
 </html>

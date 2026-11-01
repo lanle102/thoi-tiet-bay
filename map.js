@@ -25,6 +25,7 @@ function initMap() {
   document.getElementById('mc-play').onclick = () => (radar.timer ? stopAnim() : startAnim());
   document.getElementById('mc-sat').onclick = toggleSat;
   document.getElementById('map-legend').innerHTML = legendDots();
+  window.initWxMapCtl?.();
 }
 function legendDots() {
   const std = settings.std || 'faa';

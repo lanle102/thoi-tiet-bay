@@ -103,7 +103,13 @@ async function fetchWx(ids, hours = 3) {
   if (!ids.length) return;
   const chunks = []; for (let i = 0; i < ids.length; i += 40) chunks.push(ids.slice(i, i + 40));
   for (const ch of chunks) {
-    const [metars, tafs] = await Promise.all([api('metar', { ids: ch.join(','), format: 'json', hours }), api('taf', { ids: ch.join(','), format: 'json' })]);
+    const [mr, tr] = await Promise.allSettled([api('metar', { ids: ch.join(','), format: 'json', hours }), api('taf', { ids: ch.join(','), format: 'json' })]);
+    let metars = mr.status === 'fulfilled' ? mr.value : null;
+    if (!metars) { // aviationweather.gov lỗi → METAR dự phòng từ OGIMET (không có TAF)
+      try { const r = await fetchT(PROXY_HOST + '/api/ogimet?ids=' + ch.slice(0, 6).join(',') + '&hours=' + Math.min(hours, 6), 25000); const j = await r.json(); if (!j.metars?.length) throw 0; metars = j.metars; setNet(true, 'OGIMET (dự phòng, không có TAF)'); }
+      catch { throw mr.reason; }
+    }
+    const tafs = tr.status === 'fulfilled' ? tr.value : [];
     const latest = {};
     for (const m of metars) { if (!latest[m.icaoId] || m.obsTime > latest[m.icaoId].obsTime) latest[m.icaoId] = m; }
     for (const id of ch) { if (latest[id]) { window.onNewMetar?.(id, cache.metar[id], latest[id]); cache.metar[id] = latest[id]; } }
@@ -329,16 +335,38 @@ function renderList() {
     const tlabel = settings.listTime === 'utc' ? fmtUTC(obs) : fmtLocal(obs, a.tz, a.lon) + ' LT';
     const wind = p.wind ? (p.wind.spd === 0 ? 'Lặng gió' : (p.wind.vrb ? 'VRB' : pad3(p.wind.dir) + '°') + ' ' + U.wind(p.wind.spd) + (p.wind.gust ? ' G' + U.wind(p.wind.gust).split(' ')[0] : '')) : '—';
     const vis = p.vis ? U.visM(p.vis.m, p.vis.plus) : U.visSM(m.visib);
-    return `<li class="apt" data-id="${id}">
+    return `<li class="apt" data-id="${id}" style="--cc:${catColor(cat)}">
       <div class="bar" style="background:${catColor(cat)}"></div>
       <div class="main">
         <div class="row1"><span class="icao">${id}</span><span class="iata">${esc(a.iata)}</span><span class="badge c-${cat}">${cat === 'UNK' ? '?' : cat}</span><span class="temp">${U.tempShort(p.temp ?? m.temp)}</span></div>
         <div class="name">${esc(a.name || a.full)} · <span class="age${old ? ' old' : ''}" data-obs="${m.obsTime}">${tlabel} (${ago(m.obsTime)})</span></div>
         <div class="row3"><span>${p.wind && p.wind.dir != null && p.wind.spd ? windArrow(p.wind.dir) : ICON.wind}${wind}</span><span>${ICON.eye}${vis}</span><span>${ICON.cloud}${cloudShort(p.clouds, p.sky, p.cavok)}</span></div>
         ${p.wx.length ? `<div class="wx-line">${esc(p.wx.join(', '))}</div>` : ''}
+        ${tafStrip(cache.taf[id])}
       </div>${editCtl()}</li>`;
   }).join('');
   $('#list-meta').innerHTML = cache.ts ? `<span>Cập nhật ${fmtLocalNow(cache.ts)}</span><span>${new Date().toISOString().slice(11, 16)}Z</span>` : '';
+}
+/* Dải màu hạng bay theo giờ từ TAF (12 giờ tới) – kiểu AeroWeather */
+function tafHourly(t, hours = 12) {
+  if (!t?.fcsts?.length) return [];
+  const now = Math.floor(Date.now() / 3600e3) * 3600, out = [];
+  for (let h = 0; h < hours; h++) {
+    const ts = now + h * 3600 + 1800; if (ts < t.validTimeFrom || ts > t.validTimeTo) { out.push(null); continue; }
+    let st = { visib: null, clouds: [] }, tempo = null;
+    t.fcsts.forEach((f, i) => {
+      const kind = f.fcstChange || (i === 0 ? 'BASE' : 'FM');
+      if ((kind === 'BASE' || kind === 'FM' || kind === 'BECMG') && f.timeFrom <= ts) { if (kind === 'FM' || kind === 'BASE') st = { visib: f.visib ?? st.visib, clouds: f.clouds?.length ? f.clouds : (f.vertVis != null ? [{ cover: 'VV', base: f.vertVis }] : []) }; else { if (f.visib != null) st.visib = f.visib; if (f.clouds?.length) st.clouds = f.clouds; } }
+      if ((kind === 'TEMPO' || kind === 'PROB') && f.timeFrom <= ts && f.timeTo > ts) tempo = { visib: f.visib ?? st.visib, clouds: f.clouds?.length ? f.clouds : st.clouds };
+    });
+    const c = x => flightCat(x.visib == null ? null : String(x.visib).includes('+') ? 99999 : parseFloat(x.visib) * 1609.34, ceilingOf(x.clouds), x.clouds);
+    out.push({ cat: c(st), tempo: tempo ? c(tempo) : null, ts });
+  }
+  return out;
+}
+function tafStrip(t) {
+  const hrs = tafHourly(t); if (!hrs.some(Boolean)) return '';
+  return `<div class="taf-strip" title="Hạng bay dự báo theo TAF ${esc((t.rawTAF.match(/\b\d{6}Z\b/) || [''])[0])}"><span>TAF 12h</span>${hrs.map(h => h ? `<i class="${h.tempo && h.tempo !== h.cat ? 'tempo' : ''}" style="background-color:${catColor(h.tempo && h.tempo !== h.cat ? h.tempo : h.cat)}" title="${fmtUTC(new Date(h.ts * 1000))}: ${h.cat}${h.tempo ? ' / TEMPO ' + h.tempo : ''}"></i>` : '<i style="background:var(--line)"></i>').join('')}</div>`;
 }
 function fmtLocalNow(ts) { const d = new Date(ts); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
 function editCtl() { return `<div class="edit-ctl"><button class="del" aria-label="Xoá">−</button><div class="handle" aria-label="Kéo để sắp xếp">${ICON.grip}</div></div>`; }
@@ -455,7 +483,7 @@ function renderDetail() {
     <div class="chip"><div class="k">Giờ địa phương</div><div class="v" id="clk-loc">${fmtLocal(now, a.tz, a.lon)}</div><div class="s">${tzOffsetLabel(a.tz, now, a.lon)}${a.tz ? '' : ' (ước tính)'}</div></div>
     <div class="chip"><div class="k">☀ Mọc / Lặn</div><div class="v">${sun || '—'}</div><div class="s">${sunUtc || ''}</div></div>
     <div class="chip"><div class="k">Nhiệt độ / Điểm sương</div><div class="v">${p ? U.temp(p.temp) + ' / ' + U.temp(p.dew) : '—'}</div><div class="s">${p && rh(p.temp, p.dew) != null ? 'Độ ẩm ~' + rh(p.temp, p.dew) + '%' : ''}</div></div>
-  </div>`;
+  </div><div id="x-brief"></div>`;
   // METAR
   if (m) {
     const old = Date.now() / 1000 - m.obsTime > 75 * 60;
@@ -495,9 +523,10 @@ function renderDetail() {
   if (m?._hist?.length > 1) {
     html += `<div class="card"><div class="card-head"><h3>METAR gần đây</h3></div><div class="hist">${m._hist.map(h => { const c = h.fltCat || metarCat(h); return `<div><span class="badge c-${c}">${c}</span><span>${esc(h.rawOb)}</span></div>`; }).join('')}</div></div>`;
   }
-  html += `<p class="note">Giờ trong METAR/TAF là UTC (Z). Giờ mọc/lặn là giờ địa phương${a.tz ? ' (' + esc(a.tz) + ')' : ''}. Nguồn: aviationweather.gov.</p>`;
+  html += `<p class="note">Giờ trong METAR/TAF là UTC (Z). Giờ mọc/lặn là giờ địa phương${a.tz ? ' (' + esc(a.tz) + ')' : ''}. Nguồn: ${m?.source === 'OGIMET' ? 'OGIMET (dự phòng)' : 'aviationweather.gov'}.</p>`;
   $('#detail-body').innerHTML = html;
   window.renderExtras?.(id, p);
+  window.renderBrief?.(id);
 }
 function rvrTxt(v, ft) { const pre = v[0] === 'P' ? 'trên ' : v[0] === 'M' ? 'dưới ' : ''; const n = +v.replace(/[PM]/, ''); return pre + n.toLocaleString('vi-VN') + (ft ? ' ft' : ' m'); }
 $('#detail-body').addEventListener('click', e => {
