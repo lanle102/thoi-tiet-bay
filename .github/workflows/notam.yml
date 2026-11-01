@@ -1,7 +1,6 @@
 name: Lay NOTAM cong khai (FAA NOTAM Search)
+# Đã thử 01/11/2026: FAA NOTAM Search trả HTTP 403 cho máy GitHub Actions → tắt lịch tự chạy, chỉ chạy tay để thử lại.
 on:
-  schedule:
-    - cron: '41 */3 * * *'
   workflow_dispatch:
 permissions:
   contents: write
