@@ -188,7 +188,7 @@ function briefAirport(id, opt = {}) {
     if (gusts.length) add('warn', 'TAF dự báo gió giật: ' + gusts.join('; ') + '.', tag);
   }
   if (a.lat != null && hz.ts) {
-    for (const h of hz.list) if (nearPoly([a.lat, a.lon], h, opt.radius ?? 25)) add(h.kind === 'SIGMET' ? 'danger' : 'warn', `${h.kind} ${hzName(h.hazard)}${h.base != null || h.top != null ? ' ' + (fl(h.base) || '?') + '–' + (fl(h.top) || '?') : ''}, hiệu lực ${hzTime(h)} – ${inPolyAny([a.lat, a.lon], h) ? 'sân bay nằm trong vùng' : 'trong vòng ' + (opt.radius ?? 25) + ' NM'}.`, sigTag(h));
+    for (const h of hz.list) if (nearPoly([a.lat, a.lon], h, opt.radius ?? 25)) add(h.kind === 'SIGMET' && !(h.base >= 20000) ? 'danger' : 'warn', `${h.kind} ${hzName(h.hazard)}${h.base != null || h.top != null ? ' ' + (fl(h.base) || '?') + '–' + (fl(h.top) || '?') : ''}, hiệu lực ${hzTime(h)} – ${inPolyAny([a.lat, a.lon], h) ? 'sân bay nằm trong vùng' : 'trong vòng ' + (opt.radius ?? 25) + ' NM'}.`, sigTag(h));
   }
   items.sort((x, y) => SEV_ORDER[y.sev] - SEV_ORDER[x.sev]);
   return items;

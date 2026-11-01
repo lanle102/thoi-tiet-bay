@@ -9,9 +9,12 @@ document.getElementById('tool-tabs').addEventListener('click', e => { const b = 
 function renderTools() {
   document.querySelectorAll('#tool-tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === TS.t));
   const el = document.getElementById('tools-body');
+  const keep = el.dataset.t === TS.t ? el.scrollTop : 0; el.dataset.t = TS.t;
   el.innerHTML = TS.t === 'time' ? timeHtml() : TS.t === 'unit' ? unitHtml() : perfHtml();
   el.querySelectorAll('input,select').forEach(i => i.addEventListener('input', () => calcAll()));
-  calcAll();
+  if (TS.t === 'unit') { const D = { len: ['ft', 1000], spd: ['kt', 100], dist: ['NM', 100], press: ['hPa', 1013.25], temp: ['C', 15], mass: ['kg', 1000], vol: ['L', 1000] }; TS.u ||= {};
+    for (const k in D) { const [u, v] = TS.u[k] || D[k]; const i = el.querySelector(`.uin[data-k="${k}"][data-u="${u}"]`); if (i) { i.value = v; unitFrom(i, true); } } }
+  calcAll(); el.scrollTop = keep;
 }
 const card = (title, body, note) => `<div class="card tool"><div class="card-head"><h3>${title}</h3></div><div class="tbody">${body}</div>${note ? `<div class="note tnote">${note}</div>` : ''}</div>`;
 const field = (id, label, val = '', ph = '', mode = 'decimal', cls = '') => `<label class="tf ${cls}"><span>${label}</span><input id="${id}" class="tinput" value="${esc(val)}" placeholder="${esc(ph)}" inputmode="${mode}" autocomplete="off"></label>`;
@@ -77,8 +80,9 @@ function unitHtml() {
       <label class="tf"><span>Loại nhiên liệu</span><select id="fu-t" class="tinput"><option value="jeta1">Jet A-1 (0,800 kg/L)</option><option value="avgas">Avgas 100LL (0,720 kg/L)</option><option value="custom">Tự nhập tỷ trọng</option></select></label>${field('fu-d', 'Tỷ trọng (kg/L)', '0.800')}</div>
       ${out('fu-L', 'Lít')}${out('fu-G', 'US gal')}${out('fu-kg', 'kg')}${out('fu-lb', 'lb')}`, 'Tỷ trọng điển hình ở 15 °C: Jet A-1 0,775–0,840 kg/L; Avgas ~0,72 kg/L. Dùng tỷ trọng thực tế trên phiếu nạp nhiên liệu.');
 }
-function unitFrom(inp) {
+function unitFrom(inp, init) {
   const k = inp.dataset.k, v = num(inp.value);
+  if (!init && isFinite(v)) { TS.u ||= {}; TS.u[k] = [inp.dataset.u, inp.value]; saveT(); }
   document.querySelectorAll(`.uin[data-k="${k}"]`).forEach(o => { if (o === inp) return; o.value = isFinite(v) ? +Calc.convert(k, v, inp.dataset.u, o.dataset.u).toFixed(k === 'press' && o.dataset.u !== 'hPa' ? 3 : 2) : ''; });
 }
 function calcFuel() {
