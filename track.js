@@ -6,13 +6,13 @@ function trInit() {
   if (TR.map) return;
   TR.map = L.map('tr-map', { zoomControl: false, worldCopyJump: true });
   L.control.zoom({ position: 'bottomright' }).addTo(TR.map);
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, className: 'basemap', attribution: '© OpenStreetMap · ADS-B: adsb.lol / airplanes.live / OpenSky (ODbL/CC)' }).addTo(TR.map);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, className: 'basemap', attribution: '© OpenStreetMap · ADS-B: adsb.lol / adsb.fi / airplanes.live / OpenSky (ODbL/CC)' }).addTo(TR.map);
   TR.trailLayer = L.layerGroup().addTo(TR.map); TR.layer = L.layerGroup().addTo(TR.map);
   const a = aptInfo(favs[0] || 'VVTS'); TR.map.setView([a.lat ?? 10.8, a.lon ?? 106.65], 8);
   document.getElementById('tr-apt').value = favs[0] || 'VVTS';
   TR.map.on('click', () => { if (TR.sel) { TR.sel = null; trPanel(); trDraw(); } });
 }
-window.showTrack = () => { trInit(); setTimeout(() => TR.map.invalidateSize(), 60); if (!TR.mode) trNear(); else trStart(); };
+window.showTrack = () => { trInit(); setTimeout(() => { TR.map.invalidateSize(); trFit(); }, 80); if (!TR.mode) trNear(); else trStart(); };
 function guessBy(q) {
   if (/^[0-9A-F]{6}$/.test(q) && /\d/.test(q) && !/^[A-Z]{3}\d/.test(q)) return 'hex';
   if (/^[A-Z0-9]{1,2}-[A-Z0-9]{2,5}$/.test(q) || /^N\d{1,5}[A-Z]{0,2}$/.test(q)) return 'reg';
@@ -49,16 +49,17 @@ async function trNear() {
   if (a.lat == null) { toast('Không tìm thấy sân bay ' + id); return; }
   const r = +document.getElementById('tr-r').value;
   TR.mode = { by: 'point', lat: a.lat, lon: a.lon, r, apt: id }; TR.sel = null;
-  TR.map.setView([a.lat, a.lon], r <= 25 ? 9 : r <= 50 ? 8 : r <= 100 ? 7 : 6);
+  trFit();
   await trTick(true); trStart();
 }
-function trStart() { clearInterval(TR.timer); TR.timer = setInterval(() => { if (tab === 'track' && !document.hidden) trTick(); }, 6000); }
+function trFit() { const m = TR.mode; if (!TR.map || m?.by !== 'point') return; TR.map.invalidateSize(); TR.map.fitBounds(L.latLng(m.lat, m.lon).toBounds(m.r * 1852 * 2), { padding: [6, 6] }); }
+function trStart() { clearInterval(TR.timer); TR.timer = setInterval(() => { if (tab === 'track' && !document.hidden) trTick(); }, 12000); }
 async function trTick(fit) {
   const m = TR.mode; if (!m) return;
   try {
     let list = m.by === 'point' ? await adsb({ by: 'point', lat: m.lat.toFixed(4), lon: m.lon.toFixed(4), r: m.r }) : await adsb({ by: m.by, q: m.q });
     if (TR.sel && m.by === 'point' && !list.some(a => a.hex === TR.sel)) { const s = await adsb({ by: 'hex', q: TR.sel }).catch(() => []); list = list.concat(s); }
-    TR.list = list.filter(a => a.lat != null); TR.list.forEach(addTrail); saveTrails();
+    const seen = new Set(); TR.list = list.filter(a => a.lat != null && a.lon != null && !seen.has(a.hex) && seen.add(a.hex)); TR.list.forEach(addTrail); saveTrails();
   } catch (e) { TR.err = e.name === 'AbortError' ? 'hết thời gian chờ' : e.message; }
   trDraw(); trPanel();
   if (fit && TR.list.length && m.by !== 'point') TR.map.setView([TR.list[0].lat, TR.list[0].lon], 8);
@@ -67,8 +68,8 @@ const altTxt = a => a.alt_baro === 'ground' ? 'trên mặt đất' : a.alt_baro 
 function trDraw() {
   if (!TR.map) return; TR.layer.clearLayers(); TR.trailLayer.clearLayers();
   for (const a of TR.list) {
-    const sel = a.hex === TR.sel, rot = a.track ?? a.true_heading ?? 0;
-    const ic = L.divIcon({ className: 'ac-ic' + (sel ? ' sel' : ''), html: `<div style="transform:rotate(${rot}deg)">${PLANE}</div>`, iconSize: [28, 28], iconAnchor: [14, 14] });
+    const sel = a.hex === TR.sel, gnd = a.alt_baro === 'ground' || a.ground, rot = a.track ?? a.true_heading ?? 0;
+    const ic = L.divIcon({ className: 'ac-ic' + (sel ? ' sel' : '') + (gnd ? ' gnd' : ''), html: `<div style="transform:rotate(${rot}deg)">${PLANE}</div>`, iconSize: [28, 28], iconAnchor: [14, 14] });
     const mk = L.marker([a.lat, a.lon], { icon: ic, zIndexOffset: sel ? 1000 : 0 }).addTo(TR.layer);
     mk.bindTooltip(`${esc((a.flight || '').trim() || a.r || a.hex)}<br><small>${altTxt(a)}</small>`, { direction: 'top', offset: [0, -10], className: 'stn-label' });
     mk.on('click', e => { L.DomEvent.stopPropagation(e); TR.sel = a.hex; trPanel(); trDraw(); });
@@ -101,7 +102,8 @@ function trPanel() {
   if (a.wd != null) rows.push(['Gió tại độ cao (máy bay tính)', `${pad3(a.wd)}° ${a.ws} kt${a.oat != null ? ` · OAT ${a.oat}°C` : ''}`]);
   el.innerHTML = head + `<div class="card"><div class="card-head"><h3>${esc((a.flight || '').trim() || a.r || a.hex)}</h3><span class="sub">nguồn ${esc(TR.src)}</span><button class="linkbtn" id="tr-close" style="margin-left:auto">Đóng</button></div>
     <div id="tr-route" class="note" style="padding:8px 12px"></div><div class="drows">${rows.map(r => `<div class="drow"><div class="k">${r[0]}</div><div class="v">${r[1]}</div></div>`).join('')}</div>
-    <div class="note" style="padding:0 12px 10px">Vết bay: ${(TR.trails[a.hex] || []).length} điểm từ các lần cập nhật. <a href="https://globe.adsb.lol/?icao=${a.hex}" target="_blank" rel="noopener">Xem trace đầy đủ trên adsb.lol ↗</a></div></div>`;
+    <div class="note" style="padding:0 12px 10px">Vết bay: ${(TR.trails[a.hex] || []).length} điểm từ các lần cập nhật. <a href="https://globe.adsb.lol/?icao=${a.hex}" target="_blank" rel="noopener">Xem trace đầy đủ trên adsb.lol ↗</a></div>
+    <div style="padding:0 12px 12px"><a class="fr24btn" href="https://www.flightradar24.com/${encodeURIComponent((a.flight || '').trim() || a.r || '')}" target="_blank" rel="noopener">Mở trên Flightradar24 ↗</a></div></div>`;
   document.getElementById('tr-close').onclick = () => { TR.sel = null; trPanel(); trDraw(); };
   Promise.all([routeInfo(a.flight), acInfo(a.hex)]).then(([rt, ac]) => {
     const box = document.getElementById('tr-route'); if (!box || TR.sel !== a.hex) return;

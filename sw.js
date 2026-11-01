@@ -1,4 +1,4 @@
-const CACHE = 'ttb-v8';
+const CACHE = 'ttb-v9';
 const SHELL = ['./', 'index.html', 'styles.css?v=7', 'calc.js?v=7', 'app.js?v=7', 'extras.js?v=7', 'map.js?v=7', 'names.js?v=7', 'wx2.js?v=7', 'track.js?v=7', 'tools.js?v=7', 'laws.js?v=7', 'airports.json', 'manifest.webmanifest', 'laws/index.json',
   'vendor/tz.js', 'vendor/qrcode.js', 'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
