@@ -11,12 +11,15 @@ document.getElementById('tabbar').addEventListener('click', e => {
   tab = b.dataset.tab;
   document.querySelectorAll('#tabbar button').forEach(x => x.classList.toggle('on', x === b));
   for (const t of ['list', 'map', 'track', 'tools', 'laws']) document.getElementById('view-' + t).hidden = tab !== t;
+  document.body.dataset.tab = tab;
   if (tab === 'map') window.showMap?.();
   if (tab === 'track') window.showTrack?.();
   if (tab === 'tools') window.showTools?.();
   if (tab === 'laws') window.showLaws?.();
 });
 
+document.body.dataset.tab = 'list';
+document.getElementById('banner').addEventListener('click', e => { e.currentTarget.hidden = true; });
 /* ---------- Dữ liệu sân bay: đường băng + tần số ---------- */
 const shardCache = {}, apData = {};
 async function loadAp(icao) {

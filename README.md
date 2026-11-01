@@ -23,7 +23,7 @@ PWA thời tiết hàng không tiếng Việt kiểu AeroWeather cho phi công: 
 | Bản đồ | OpenStreetMap, radar RainViewer, ảnh mây NASA GIBS (Himawari/GOES) | Chấm màu hạng bay các trạm METAR. |
 | Khác | Đồng bộ yêu thích (Vercel Blob, `api/sync.js`), thông báo đẩy Web Push (`api/push*.js`, GitHub Actions mỗi ~10 phút) | Như bản 2. |
 
-Service worker `sw.js` (cache `ttb-v6`) lưu vỏ app, công cụ, kho luật để chạy offline; dữ liệu thời tiết ưu tiên mạng, mất mạng dùng bản lưu có cảnh báo; không lưu tạm ADS-B/AI.
+Service worker `sw.js` (cache `ttb-v7`) lưu vỏ app, công cụ, kho luật để chạy offline; dữ liệu thời tiết ưu tiên mạng, mất mạng dùng bản lưu có cảnh báo; không lưu tạm ADS-B/AI.
 
 ## Biến môi trường (Vercel → Project → Settings → Environment Variables)
 

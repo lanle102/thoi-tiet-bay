@@ -291,3 +291,4 @@ mark{background:color-mix(in srgb,#ffcc00 55%,transparent);color:inherit;border-
 @media (prefers-reduced-motion:reduce){.view{transition:none}}
 #app{overflow:clip}
 #view-route:not(.active),#view-detail:not(.active){visibility:hidden;transition:transform .28s ease,opacity .28s,visibility 0s .28s}
+body[data-tab="tools"] .banner,body[data-tab="laws"] .banner,body[data-tab="track"] .banner{display:none!important}
