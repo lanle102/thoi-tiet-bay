@@ -153,9 +153,10 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;paddin
 body.detail-open .tabbar{display:none}
 #view-list .scroller{padding-bottom:calc(env(safe-area-inset-bottom) + 80px)}
 #view-detail{z-index:30}
-#map{flex:1;margin-bottom:calc(env(safe-area-inset-bottom) + 56px);background:#aad3df}
-html[data-theme="dark"] .basemap{filter:invert(1) hue-rotate(180deg) brightness(.85) contrast(.9)}
-html[data-theme="dark"] #map{background:#1b2638}
+#map{flex:1;margin-bottom:calc(env(safe-area-inset-bottom) + 56px)}
+.leaflet-container{background:#d4e6c8}
+html[data-theme="dark"] .leaflet-container{background:#0b0b0b}
+/* Không đảo màu tile — filter trên .basemap làm WebKit iOS không vẽ tile (nền xám). */
 .map-ctl{position:absolute;top:calc(env(safe-area-inset-top) + 64px);right:10px;z-index:500;display:flex;flex-direction:column;gap:6px}
 .mc{background:var(--card);color:var(--text);border-radius:10px;padding:8px 11px;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.25)}
 .mc.on{background:var(--accent);color:#fff}
@@ -243,6 +244,13 @@ html[data-theme="dark"] .stn-label{color:#fff;text-shadow:0 0 3px #000,0 0 3px #
 .tr-row .tinput{flex:1;text-transform:uppercase}
 .tr-row .tinput.short{flex:0 0 82px}
 #tr-map{height:42vh;min-height:220px;flex:none}
+.map-base{position:absolute;left:8px;top:8px;z-index:1100;display:flex;background:var(--card);border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.25);pointer-events:auto}
+#map .map-base{left:10px;right:auto;top:auto;bottom:calc(env(safe-area-inset-bottom) + 70px)}
+.map-base button{padding:6px 10px;font-size:12px;font-weight:600;color:var(--muted);background:none;border:0}
+.map-base button.on{background:var(--accent);color:#fff}
+.leaflet-control-attribution{font-size:10px;max-width:55%;line-height:1.25;background:rgba(255,255,255,.7)!important}
+html[data-theme="dark"] .leaflet-control-attribution{background:rgba(0,0,0,.55)!important;color:#ddd}
+html[data-theme="dark"] .leaflet-control-attribution a{color:#9cf}
 .tr-src{font-size:12px;color:var(--muted);padding:6px 12px 2px;line-height:1.45;flex:none}
 .tr-panel{flex:1;overflow-y:auto;padding:6px 12px calc(env(safe-area-inset-bottom) + 76px)}
 .tr-meta{font-size:12.5px;color:var(--muted);padding:4px 2px 8px;line-height:1.45}

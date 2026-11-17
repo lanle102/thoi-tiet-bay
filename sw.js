@@ -1,5 +1,5 @@
-const CACHE = 'ttb-v12';
-const SHELL = ['./', 'index.html', 'styles.css?v=8', 'calc.js?v=7', 'app.js?v=7', 'extras.js?v=7', 'map.js?v=7', 'names.js?v=7', 'wx2.js?v=7', 'track.js?v=9', 'tools.js?v=7', 'laws.js?v=7', 'airports.json', 'manifest.webmanifest', 'laws/index.json',
+const CACHE = 'ttb-v13';
+const SHELL = ['./', 'index.html', 'styles.css?v=9', 'calc.js?v=7', 'app.js?v=8', 'extras.js?v=7', 'map.js?v=8', 'names.js?v=7', 'wx2.js?v=8', 'track.js?v=10', 'tools.js?v=7', 'laws.js?v=7', 'airports.json', 'manifest.webmanifest', 'laws/index.json',
   'vendor/tz.js', 'vendor/qrcode.js', 'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 self.addEventListener('install', e => {
@@ -11,6 +11,24 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
+  // Tile bản đồ: network-first, cache ngắn có giới hạn — không để bản lỗi/cũ trong SW làm nền xám.
+  if (/basemaps\.cartocdn\.com$|arcgisonline\.com$|openstreetmap\.org$|earthdata\.nasa\.gov$|rainviewer\.com$/.test(url.hostname)) {
+    e.respondWith((async () => {
+      const cache = await caches.open('ttb-tiles');
+      try {
+        const r = await fetch(e.request);
+        if (r.ok) {
+          await cache.put(e.request, r.clone());
+          const keys = await cache.keys();
+          if (keys.length > 80) await Promise.all(keys.slice(0, keys.length - 80).map(k => cache.delete(k)));
+        }
+        return r;
+      } catch (err) {
+        return (await cache.match(e.request)) || Response.error();
+      }
+    })());
+    return;
+  }
   if (url.pathname.includes('/api/') || url.pathname.includes('/thoi-tiet-bay/notams/')) {
     if (/\/api\/(sync|push|adsb)/.test(url.pathname)) return; // không lưu tạm dữ liệu thời gian thực
     // Dữ liệu thời tiết: ưu tiên mạng, mất mạng thì dùng bản đã lưu

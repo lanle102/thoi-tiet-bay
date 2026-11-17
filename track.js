@@ -6,13 +6,13 @@ function trInit() {
   if (TR.map) return;
   TR.map = L.map('tr-map', { zoomControl: false, worldCopyJump: true });
   L.control.zoom({ position: 'bottomright' }).addTo(TR.map);
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, className: 'basemap', attribution: '© OpenStreetMap · ADS-B: adsb.lol / adsb.fi / airplanes.live / OpenSky (ODbL/CC)' }).addTo(TR.map);
+  attachBasemap(TR.map, 'ADS-B: adsb.lol / adsb.fi / airplanes.live / OpenSky (ODbL/CC)');
   TR.trailLayer = L.layerGroup().addTo(TR.map); TR.layer = L.layerGroup().addTo(TR.map);
   const a = aptInfo(favs[0] || 'VVTS'); TR.map.setView([a.lat ?? 10.8, a.lon ?? 106.65], 8);
   document.getElementById('tr-apt').value = favs[0] || 'VVTS';
   TR.map.on('click', () => { if (TR.sel) { TR.sel = null; trPanel(); trDraw(); } });
 }
-window.showTrack = () => { trInit(); setTimeout(() => { TR.map.invalidateSize(); trFit(); }, 80); if (!TR.mode) trNear(); else trStart(); };
+window.showTrack = () => { trInit(); whenMapReady(TR.map, trFit); if (!TR.mode) trNear(); else trStart(); };
 function guessBy(q) {
   if (/^[0-9A-F]{6}$/.test(q) && /\d/.test(q) && !/^[A-Z]{3}\d/.test(q)) return 'hex';
   if (/^[A-Z0-9]{1,2}-[A-Z0-9]{2,5}$/.test(q) || /^N\d{1,5}[A-Z]{0,2}$/.test(q)) return 'reg';
@@ -169,7 +169,12 @@ async function trNear() {
   trFit();
   await trTick(true); trStart();
 }
-function trFit() { const m = TR.mode; if (!TR.map || m?.by !== 'point') return; TR.map.invalidateSize(); TR.map.fitBounds(L.latLng(m.lat, m.lon).toBounds(m.r * 1852 * 2), { padding: [6, 6] }); }
+function trFit() {
+  const m = TR.mode; if (!TR.map || m?.by !== 'point') return;
+  TR.map.invalidateSize();
+  const s = TR.map.getSize(); if (s.x < 40 || s.y < 40) return;
+  TR.map.fitBounds(L.latLng(m.lat, m.lon).toBounds(m.r * 1852 * 2), { padding: [20, 20], maxZoom: 11, animate: false });
+}
 function trStart() { clearInterval(TR.timer); TR.timer = setInterval(() => { if (tab === 'track' && !document.hidden) trTick(); }, 12000); }
 async function trTick(fit) {
   const m = TR.mode; if (!m) return;

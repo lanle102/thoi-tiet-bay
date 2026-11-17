@@ -1,9 +1,91 @@
 'use strict';
-/* Bản đồ: Leaflet + OpenStreetMap, chấm màu hạng bay, radar RainViewer (hoạt cảnh), ảnh mây vệ tinh NASA GIBS. */
+/* Bản đồ: Leaflet + Esri (Dark/Light Gray, World Street Map, World Imagery).
+   CARTO từ 2026 bắt buộc API key — tile không khóa bị đóng dấu «API KEY REQUIRED».
+   Không đảo màu tile bằng CSS — WebKit trên iPhone hay để nền xám, không vẽ tile. */
+const ATTR_ESRI = 'Tiles © Esri — Esri, HERE, Garmin, FAO, NOAA, USGS, Maxar, Earthstar Geographics, and the GIS User Community';
+const TTB_MAPS = []; // { map, extraAttr, layer, kind, box }
+
+function ttbKind() {
+  const c = LS.get('mapBase', 'auto');
+  if (c === 'sat') return 'sat';
+  if (c === 'light') return 'street';
+  return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'street';
+}
+function esri(path, maxZoom, cls, attr) {
+  return L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/' + path + '/MapServer/tile/{z}/{y}/{x}', { maxZoom: maxZoom, detectRetina: true, className: cls || 'basemap', attribution: attr || '' });
+}
+function ttbTile(kind, extraAttr) {
+  const attr = extraAttr ? ATTR_ESRI + ' · ' + extraAttr : ATTR_ESRI;
+  let layers;
+  if (kind === 'sat') layers = [esri('World_Imagery', 19, 'basemap', attr)];
+  else if (kind === 'dark') layers = [
+    esri('Canvas/World_Dark_Gray_Base', 16, 'basemap', attr),
+    esri('Canvas/World_Dark_Gray_Reference', 16, 'basemap-ref', '')
+  ];
+  else layers = [esri('World_Street_Map', 19, 'basemap', attr)];
+  return L.layerGroup(layers);
+}
+function ttbBringBack(group) {
+  const list = [];
+  group.eachLayer(l => list.push(l));
+  list.slice().reverse().forEach(l => l.bringToBack());
+}
+function ttbApplyBase(entry) {
+  const kind = ttbKind();
+  if (entry.layer && entry.kind === kind) {
+    if (entry.box) entry.box.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.base === LS.get('mapBase', 'auto')));
+    return;
+  }
+  if (entry.layer) entry.map.removeLayer(entry.layer);
+  entry.kind = kind;
+  entry.layer = ttbTile(kind, entry.extraAttr).addTo(entry.map);
+  ttbBringBack(entry.layer);
+  if (entry.box) entry.box.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.base === LS.get('mapBase', 'auto')));
+}
+function ttbSwitcher(map) {
+  const box = L.DomUtil.create('div', 'map-base');
+  box.innerHTML = '<button type="button" data-base="auto">Bản đồ</button><button type="button" data-base="sat">Vệ tinh</button><button type="button" data-base="light">Sáng</button>';
+  L.DomEvent.disableClickPropagation(box);
+  box.addEventListener('click', e => {
+    const b = e.target.closest('button[data-base]'); if (!b) return;
+    LS.set('mapBase', b.dataset.base);
+    TTB_MAPS.forEach(ttbApplyBase);
+  });
+  map.getContainer().appendChild(box);
+  return box;
+}
+window.attachBasemap = function(map, extraAttr) {
+  for (let i = TTB_MAPS.length - 1; i >= 0; i--) {
+    const e = TTB_MAPS[i];
+    try { if (e.map === map || !e.map.getContainer() || !e.map.getContainer().isConnected) TTB_MAPS.splice(i, 1); } catch { TTB_MAPS.splice(i, 1); }
+  }
+  const entry = { map, extraAttr: extraAttr || '', layer: null, kind: '', box: ttbSwitcher(map) };
+  TTB_MAPS.push(entry);
+  ttbApplyBase(entry);
+  return entry.layer;
+};
+window.refreshAllBasemaps = () => TTB_MAPS.forEach(ttbApplyBase);
+window.whenMapReady = function(map, fn) {
+  let done = false;
+  const run = () => {
+    if (done || !map) return;
+    map.invalidateSize();
+    const s = map.getSize();
+    if (s.x > 40 && s.y > 40) { done = true; fn(); }
+  };
+  run();
+  if (done) return;
+  requestAnimationFrame(() => {
+    run();
+    if (done) return;
+    requestAnimationFrame(() => { run(); if (!done) setTimeout(run, 200); });
+  });
+};
+
 let map, stnLayer, mapInit = false, radar = { frames: [], layers: [], idx: 0, timer: null, on: false, host: '' }, satLayer = null, mapMetars = {};
 function showMap() {
   if (!mapInit) initMap();
-  setTimeout(() => { map.invalidateSize(); loadStations(); }, 60);
+  whenMapReady(map, () => { map.invalidateSize(); loadStations(); });
 }
 window.showMap = showMap;
 function favBounds() {
@@ -14,10 +96,10 @@ function initMap() {
   mapInit = true;
   map = L.map('map', { zoomControl: false, attributionControl: true, worldCopyJump: true });
   L.control.zoom({ position: 'bottomright' }).addTo(map);
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, className: 'basemap', attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
+  attachBasemap(map);
   map.createPane('wx'); map.getPane('wx').style.zIndex = 350; map.getPane('wx').style.pointerEvents = 'none';
   stnLayer = L.layerGroup().addTo(map);
-  map.fitBounds(favBounds().pad(0.15), { maxZoom: 7 });
+  whenMapReady(map, () => map.fitBounds(favBounds().pad(0.15), { maxZoom: 7, animate: false }));
   let t; map.on('moveend', () => { clearTimeout(t); t = setTimeout(loadStations, 350); });
   map.on('zoomend', drawStations);
   document.getElementById('btn-map-fit').onclick = () => map.fitBounds(favBounds().pad(0.15), { maxZoom: 7 });

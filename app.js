@@ -28,6 +28,7 @@ function applyTheme() {
   const t = settings.theme === 'auto' ? (mq.matches ? 'dark' : 'light') : settings.theme;
   document.documentElement.dataset.theme = t;
   document.querySelector('meta[name=theme-color]').content = t === 'dark' ? '#0b1220' : '#f2f3f7';
+  window.refreshAllBasemaps?.();
 }
 mq.addEventListener?.('change', applyTheme);
 applyTheme();

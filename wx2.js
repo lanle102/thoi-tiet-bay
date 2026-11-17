@@ -249,12 +249,12 @@ async function buildRoute() {
   // bản đồ nhỏ
   if (routeMap) { routeMap.remove(); routeMap = null; }
   routeMap = L.map('rt-map', { zoomControl: false, attributionControl: true });
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 12, className: 'basemap', attribution: '© OpenStreetMap' }).addTo(routeMap);
+  attachBasemap(routeMap);
   const line = L.polyline(pts, { color: '#0a84ff', weight: 3 }).addTo(routeMap);
   for (const h of enroute) for (const r of h.rings) (h.line ? L.polyline(r, { color: hzColor(h.hazard), weight: 3 }) : L.polygon(r, { color: hzColor(h.hazard), weight: 2, fillOpacity: .2 })).bindPopup(hzPopup(h)).addTo(routeMap);
   for (const p of pireps) L.circleMarker([p.lat, p.lon], { radius: 4, color: '#30b0c7' }).bindPopup(`<pre>${esc(p.rawOb)}</pre>`).addTo(routeMap);
   for (const i of ids) { const q = aptInfo(i); if (q.lat != null) L.circleMarker([q.lat, q.lon], { radius: 7, color: '#fff', weight: 2, fillColor: getComputedStyle(document.documentElement).getPropertyValue('--' + metarCat(cache.metar[i]).toLowerCase()).trim() || '#888', fillOpacity: 1 }).bindTooltip(i, { permanent: true, direction: 'right', className: 'stn-label' }).addTo(routeMap); }
-  routeMap.fitBounds(line.getBounds().pad(0.2));
+  whenMapReady(routeMap, () => routeMap.fitBounds(line.getBounds().pad(0.2), { maxZoom: 10, animate: false }));
 }
 window.openRoute = openRoute;
 document.getElementById('btn-route').onclick = openRoute;
