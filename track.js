@@ -145,7 +145,12 @@ async function adsbPair(qReg, qCs) {
   const labels = ['số đăng ký ' + qReg, 'callsign ' + (qCs || qReg)];
   const parts = rs.flatMap((x, i) => (x.parts || []).map(p => ({ ...p, name: p.name + ' · ' + labels[i] })));
   TR.parts = parts;
-  TR.src = formatSrc(parts, list.length);
+  TR.src = labels.map((label, i) => {
+    const x = rs[i], ok = (x.parts || []).filter(p => !p.err && p.n);
+    if (ok.length) return label + ': ' + ok.map(p => p.name + ' ' + p.n + ' (' + p.via + ')').join(', ');
+    if ((x.parts || []).some(p => !p.err)) return label + ': không thấy';
+    return label + ': ' + (x.err || 'không dữ liệu');
+  }).join(' · ') + ' · gộp ' + list.length;
   TR.now = Math.max(0, ...rs.map(x => x.now || 0)) || Date.now();
   TR.err = list.length || parts.some(p => !p.err) ? '' : (rs.map(x => x.err).find(Boolean) || 'Không nguồn ADS-B nào trả dữ liệu');
   return list;

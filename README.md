@@ -22,7 +22,7 @@ PWA thời tiết hàng không tiếng Việt kiểu AeroWeather cho phi công: 
 | Bản đồ | Esri World Street Map (sáng), Canvas Dark Gray (tối), World Imagery (vệ tinh); nút đổi lớp Bản đồ / Vệ tinh / Sáng. Radar RainViewer, mây NASA GIBS | Không dùng Google/Apple (cần khóa trả tiền). CARTO từ 2026 bắt buộc API key (tile không khóa bị đóng dấu). Không đảo màu tile bằng CSS (WebKit iOS hay để nền xám). |
 | Khác | Đồng bộ yêu thích (Vercel Blob, `api/sync.js`), thông báo đẩy Web Push (`api/push*.js`, GitHub Actions mỗi ~10 phút) | Như bản 2. |
 
-Service worker `sw.js` (cache `ttb-v15`) lưu vỏ app, công cụ, kho luật để chạy offline; dữ liệu thời tiết ưu tiên mạng, mất mạng dùng bản lưu có cảnh báo; không lưu tạm ADS-B; tile bản đồ network-first, cache tối đa 80 ô.
+Service worker `sw.js` (cache `ttb-v16`) lưu vỏ app, công cụ, kho luật để chạy offline; dữ liệu thời tiết ưu tiên mạng, mất mạng dùng bản lưu có cảnh báo; không lưu tạm ADS-B; tile bản đồ network-first, cache tối đa 80 ô.
 
 ## Biến môi trường (Vercel → Project → Settings → Environment Variables)
 
