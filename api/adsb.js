@@ -2,7 +2,8 @@
 // Gọi song song, retry 1 lần, trả khi đã có dữ liệu (không chờ nguồn chậm hết timeout).
 // Cache ~8s theo toạ độ làm tròn / theo mã tìm.
 const UA = { 'User-Agent': 'ThoiTietBay/2.0 (personal PWA; https://lanle102.github.io/thoi-tiet-bay/)', Accept: 'application/json' };
-const clean = s => String(s || '').toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 10);
+const { expandReg } = require('../reg.js');
+const clean = s => String(s || '').toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 12);
 const mem = new Map(); // key -> { exp, body }
 const MEM_MS = 8000;
 
@@ -115,7 +116,8 @@ module.exports = async function handler(req, res) {
   if (region) res.setHeader('x-ttb-region', region);
   const p = req.query || {};
   const by = ['callsign', 'reg', 'hex', 'point'].includes(p.by) ? p.by : 'callsign';
-  const q = clean(p.q);
+  let q = clean(p.q);
+  if (by === 'reg') { const exp = expandReg(q); if (exp) q = exp; }
   const lat = +p.lat, lon = +p.lon, rad = Math.min(250, Math.max(5, +p.r || 40));
   if (by === 'point' ? !(isFinite(lat) && isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) : q.length < 2) return res.status(400).json({ error: 'Tham số không hợp lệ' });
   if (by === 'hex' && !/^[0-9A-F]{6}$/.test(q)) return res.status(400).json({ error: 'Mã hex ICAO gồm 6 ký tự 0-9/A-F' });

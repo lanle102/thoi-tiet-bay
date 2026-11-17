@@ -13,12 +13,6 @@ function trInit() {
   TR.map.on('click', () => { if (TR.sel) { TR.sel = null; trPanel(); trDraw(); } });
 }
 window.showTrack = () => { trInit(); whenMapReady(TR.map, trFit); if (!TR.mode) trNear(); else trStart(); };
-function guessBy(q) {
-  if (/^[0-9A-F]{6}$/.test(q) && /\d/.test(q) && !/^[A-Z]{3}\d/.test(q)) return 'hex';
-  if (/^[A-Z0-9]{1,2}-[A-Z0-9]{2,5}$/.test(q) || /^N\d{1,5}[A-Z]{0,2}$/.test(q)) return 'reg';
-  if (/^[A-Z0-9]{2}\d{1,4}[A-Z]?$/.test(q) && !/^[A-Z]{3}\d/.test(q)) return 'flight';
-  return 'callsign';
-}
 async function flightToCallsign(q) { // số hiệu IATA (VN220) → callsign ICAO (HVN220) qua adsbdb
   try { const r = await fetchT('https://api.adsbdb.com/v0/callsign/' + q, 8000); const j = await r.json(); return j.response?.flightroute?.callsign_icao || null; } catch { return null; }
 }
@@ -109,7 +103,8 @@ async function fetchDirect(name, url) {
     return { name, n: 0, ac: [], err, via: 'trình duyệt' };
   }
 }
-async function adsb(params) {
+async function adsb(params, opt) {
+  const silent = opt && opt.silent;
   const by = params.by, q = params.q || '', lat = params.lat, lon = params.lon, rad = params.r || 50;
   const jobs = [(async () => {
     try {
@@ -136,11 +131,23 @@ async function adsb(params) {
   const okDirect = directs.filter(d => !d.err);
   const parts = combineParts(proxy.parts, directs);
   const list = mergeAc([proxy.ac, ...okDirect.map(d => d.ac)]);
+  const rawNow = Math.max(proxy.now || 0, ...directs.map(d => d.now || 0));
+  const now = rawNow ? (rawNow < 1e12 ? rawNow * 1000 : rawNow) : Date.now();
+  const err = parts.some(p => !p.err) || list.length ? '' : (proxy.err || 'Không nguồn ADS-B nào trả dữ liệu');
+  const src = formatSrc(parts, list.length);
+  if (!silent) { TR.parts = parts; TR.src = src; TR.now = now; TR.err = err; }
+  return silent ? { ac: list, parts, now, src, err } : list;
+}
+async function adsbPair(qReg, qCs) {
+  const jobs = [adsb({ by: 'reg', q: qReg }, { silent: true }), adsb({ by: 'callsign', q: qCs || qReg }, { silent: true })];
+  const rs = await Promise.all(jobs);
+  const list = mergeAc(rs.map(x => x.ac));
+  const labels = ['số đăng ký ' + qReg, 'callsign ' + (qCs || qReg)];
+  const parts = rs.flatMap((x, i) => (x.parts || []).map(p => ({ ...p, name: p.name + ' · ' + labels[i] })));
   TR.parts = parts;
   TR.src = formatSrc(parts, list.length);
-  const rawNow = Math.max(proxy.now || 0, ...directs.map(d => d.now || 0));
-  TR.now = rawNow ? (rawNow < 1e12 ? rawNow * 1000 : rawNow) : Date.now();
-  TR.err = parts.some(p => !p.err) || list.length ? '' : (proxy.err || 'Không nguồn ADS-B nào trả dữ liệu');
+  TR.now = Math.max(0, ...rs.map(x => x.now || 0)) || Date.now();
+  TR.err = list.length || parts.some(p => !p.err) ? '' : (rs.map(x => x.err).find(Boolean) || 'Không nguồn ADS-B nào trả dữ liệu');
   return list;
 }
 
@@ -152,9 +159,17 @@ function addTrail(a) {
 }
 function saveTrails() { const keep = {}; const now = Date.now(); for (const [k, v] of Object.entries(TR.trails)) if (v.length && now - v[v.length - 1][3] < 3 * 3600e3) keep[k] = v; TR.trails = keep; LS.set('trails', keep); }
 async function trSearch() {
-  let q = document.getElementById('tr-q').value.trim().toUpperCase().replace(/\s+/g, ''); if (q.length < 2) { toast('Nhập callsign, số hiệu, số đăng ký hoặc hex'); return; }
+  let q = normalizeReg(document.getElementById('tr-q').value); if (q.length < 2) { toast('Nhập callsign, số hiệu, số đăng ký hoặc hex'); return; }
   let by = document.getElementById('tr-by').value; if (by === 'auto') by = guessBy(q);
   let note = '';
+  const raw = q, reg = expandReg(q);
+  if (by === 'reg' && reg) {
+    note = raw !== reg ? `Số đăng ký ${raw} → ${reg}` : `Số đăng ký ${reg}`;
+    TR.mode = { by: 'regcs', q: reg, qReg: reg, qCs: raw.replace(/-/g, ''), note }; TR.sel = null; await trTick(true);
+    if (TR.list.length === 1) { TR.sel = TR.list[0].hex; trPanel(); trDraw(); }
+    trStart(); return;
+  }
+  if (by === 'reg' && !reg) note = 'Thử số đăng ký «' + q + '» (không nhận được dạng chuẩn)';
   if (by === 'flight') { const cs = await flightToCallsign(q); if (cs) { note = `Số hiệu ${q} → callsign ${cs} (adsbdb.com)`; q = cs; } else note = `Không đổi được số hiệu ${q} sang callsign ICAO – thử tìm thẳng`; by = 'callsign'; }
   TR.mode = { by, q, note }; TR.sel = null; await trTick(true);
   if (TR.list.length === 1) { TR.sel = TR.list[0].hex; trPanel(); trDraw(); }
@@ -179,8 +194,12 @@ function trStart() { clearInterval(TR.timer); TR.timer = setInterval(() => { if 
 async function trTick(fit) {
   const m = TR.mode; if (!m) return;
   try {
-    let list = m.by === 'point' ? await adsb({ by: 'point', lat: m.lat.toFixed(4), lon: m.lon.toFixed(4), r: m.r }) : await adsb({ by: m.by, q: m.q });
-    if (TR.sel && m.by === 'point' && !list.some(a => a.hex === TR.sel)) { const s = await adsb({ by: 'hex', q: TR.sel }).catch(() => []); list = list.concat(s); }
+    let list;
+    if (m.by === 'point') {
+      list = await adsb({ by: 'point', lat: m.lat.toFixed(4), lon: m.lon.toFixed(4), r: m.r });
+      if (TR.sel && !list.some(a => a.hex === TR.sel)) { const s = await adsb({ by: 'hex', q: TR.sel }).catch(() => []); list = list.concat(s); }
+    } else if (m.by === 'regcs') list = await adsbPair(m.qReg, m.qCs);
+    else list = await adsb({ by: m.by, q: m.q });
     const seen = new Set(); TR.list = list.filter(a => a.lat != null && a.lon != null && !seen.has(a.hex) && seen.add(a.hex)); TR.list.forEach(addTrail); saveTrails();
   } catch (e) { TR.err = e.name === 'AbortError' ? 'hết thời gian chờ' : e.message; }
   trDraw(); trPanel(); renderSrc();
@@ -207,7 +226,7 @@ async function acInfo(hex) { if (hex in acCache) return acCache[hex];
   try { const j = await (await fetchT('https://api.adsbdb.com/v0/aircraft/' + hex, 8000)).json(); acCache[hex] = j.response?.aircraft || null; } catch { acCache[hex] = null; } return acCache[hex]; }
 function trPanel() {
   const el = document.getElementById('tr-panel'), m = TR.mode;
-  const head = `<div class="tr-meta">${m ? (m.by === 'point' ? `Quanh ${m.apt} ${m.r} NM` : `Tìm ${({ callsign: 'callsign', reg: 'số đăng ký', hex: 'hex' })[m.by]} «${esc(m.q)}»`) : ''} · ${TR.list.length} máy bay${TR.now ? ' · lúc ' + fmtUTC(new Date(TR.now), false) + ' (' + fmtLocalNow(TR.now) + ' giờ máy)' : ''}${m?.note ? '<br>' + esc(m.note) : ''}${TR.err ? `<br><span class="errtxt">Không có dữ liệu: ${esc(TR.err)}</span>` : ''}</div>`;
+  const head = `<div class="tr-meta">${m ? (m.by === 'point' ? `Quanh ${m.apt} ${m.r} NM` : `Tìm ${({ callsign: 'callsign', reg: 'số đăng ký', regcs: 'số đăng ký', hex: 'hex' })[m.by] || m.by} «${esc(m.q)}»`) : ''} · ${TR.list.length} máy bay${TR.now ? ' · lúc ' + fmtUTC(new Date(TR.now), false) + ' (' + fmtLocalNow(TR.now) + ' giờ máy)' : ''}${m?.note ? '<br>' + esc(m.note) : ''}${TR.err ? `<br><span class="errtxt">Không có dữ liệu: ${esc(TR.err)}</span>` : ''}</div>`;
   const a = TR.list.find(x => x.hex === TR.sel);
   if (!a) {
     const rows = TR.list.slice().sort((x, y) => (y.alt_baro === 'ground' ? -1 : y.alt_baro || 0) - (x.alt_baro === 'ground' ? -1 : x.alt_baro || 0)).slice(0, 60).map(a => `<div class="tr-item" data-hex="${a.hex}"><b>${esc((a.flight || '').trim() || '—')}</b><span>${esc(a.r || '')}</span><span>${esc(a.t || '')}</span><span>${altTxt(a)}</span><span>${a.gs != null ? Math.round(a.gs) + ' kt' : ''}</span></div>`).join('');
