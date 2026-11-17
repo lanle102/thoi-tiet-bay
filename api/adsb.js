@@ -6,22 +6,21 @@ const clean = s => String(s || '').toUpperCase().replace(/[^A-Z0-9-]/g, '').slic
 const mem = new Map(); // key -> { exp, body }
 const MEM_MS = 8000;
 
-async function getJSON(url, ms = 14000, retries = 1) {
-  let last, spent = 0;
+async function getJSON(url, ms = 16000, retries = 1) {
+  let last;
   for (let i = 0; i <= retries; i++) {
     const started = Date.now();
-    const budget = Math.max(3000, ms - spent);
-    const c = new AbortController(); const t = setTimeout(() => c.abort(), budget);
+    const c = new AbortController(); const t = setTimeout(() => c.abort(), ms);
     try {
       const r = await fetch(url, { signal: c.signal, headers: UA });
       if (!r.ok) { const e = new Error('HTTP ' + r.status); e.status = r.status; throw e; }
       return await r.json();
     } catch (e) {
       last = e;
-      e.ms = (e.ms || 0) + (Date.now() - started);
-      spent += Date.now() - started;
+      e.ms = Date.now() - started;
       const retryable = !e.status || e.status >= 500 || e.name === 'AbortError' || e.name === 'TypeError';
-      if (!retryable || i === retries || spent >= ms - 2000) throw e;
+      // Chỉ retry khi lỗi nhanh. Lỗi ~10s rồi retry 3s chỉ làm trễ, không kịp lấy dữ liệu.
+      if (!retryable || i === retries || e.ms > 3000) throw e;
     } finally { clearTimeout(t); }
   }
   throw last;
@@ -61,7 +60,7 @@ function putCache(key, body) { mem.set(key, { exp: Date.now() + MEM_MS, body });
 
 // Chạy song song. Chỉ trả sớm khi đã có máy bay (chờ thêm grace để gộp nguồn khác); nếu mới có nguồn rỗng thì đợi đến khi mọi nguồn xong hoặc hết hard.
 // Dùng mảng đặc (không dùng new Array) để không bỏ sót nguồn chưa kịp trả.
-function gather(srcs, { grace = 2000, hard = 20000 } = {}) {
+function gather(srcs, { grace = 2500, hard = 18000 } = {}) {
   return new Promise(resolve => {
     const results = Array.from({ length: srcs.length }, () => null);
     let settled = 0, done = false;
@@ -80,8 +79,8 @@ function gather(srcs, { grace = 2000, hard = 20000 } = {}) {
       Promise.resolve().then(fn).then(value => {
         results[i] = { status: 'fulfilled', value };
         settled++;
-        // Chỉ trả sớm sau khi adsb.lol (nguồn 0, thường đủ nhất ở VN) đã xong.
-        if (hasAc() && results[0] && !graceTimer) graceTimer = setTimeout(finish, grace);
+        // Đã có máy bay thì chờ thêm grace rồi trả. Chưa có (VD VVTS, chỉ adsb.lol có) thì đợi đến hard.
+        if (hasAc() && !graceTimer) graceTimer = setTimeout(finish, grace);
         if (settled === srcs.length) finish();
       }, reason => {
         results[i] = { status: 'rejected', reason };
