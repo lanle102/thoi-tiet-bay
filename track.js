@@ -113,7 +113,7 @@ async function adsb(params) {
   const by = params.by, q = params.q || '', lat = params.lat, lon = params.lon, rad = params.r || 50;
   const jobs = [(async () => {
     try {
-      const r = await fetchT(BASE + '/api/adsb?' + new URLSearchParams(params), 15000);
+      const r = await fetchT(BASE + '/api/adsb?' + new URLSearchParams(params), 22000);
       const j = await r.json();
       return { kind: 'proxy', ac: acList({ ac: j.ac || [] }), now: j.now || Date.now(), parts: proxyParts(j), err: j.error || '' };
     } catch (e) {
