@@ -6,18 +6,21 @@ const clean = s => String(s || '').toUpperCase().replace(/[^A-Z0-9-]/g, '').slic
 const mem = new Map(); // key -> { exp, body }
 const MEM_MS = 8000;
 
-async function getJSON(url, ms = 8000, retries = 1) {
+async function getJSON(url, ms = 12000, retries = 1) {
   let last;
   for (let i = 0; i <= retries; i++) {
-    const c = new AbortController(); const t = setTimeout(() => c.abort(), i === 0 ? ms : Math.max(ms, 10000));
+    const started = Date.now();
+    const c = new AbortController(); const t = setTimeout(() => c.abort(), ms);
     try {
       const r = await fetch(url, { signal: c.signal, headers: UA });
       if (!r.ok) { const e = new Error('HTTP ' + r.status); e.status = r.status; throw e; }
       return await r.json();
     } catch (e) {
       last = e;
+      e.ms = Date.now() - started;
       const retryable = !e.status || e.status >= 500 || e.name === 'AbortError' || e.name === 'TypeError';
-      if (!retryable || i === retries) throw e;
+      // Chỉ thử lại khi lỗi nhanh (mạng/5xx). Đừng abort lúc 8s rồi mở request mới — nguồn chậm sẽ không kịp trả.
+      if (!retryable || i === retries || (e.ms || 0) > 2500) throw e;
     } finally { clearTimeout(t); }
   }
   throw last;
@@ -57,7 +60,7 @@ function putCache(key, body) { mem.set(key, { exp: Date.now() + MEM_MS, body });
 
 // Chạy song song. Chỉ trả sớm khi đã có máy bay (chờ thêm grace để gộp nguồn khác); nếu mới có nguồn rỗng thì đợi đến khi mọi nguồn xong hoặc hết hard.
 // Dùng mảng đặc (không dùng new Array) để không bỏ sót nguồn chưa kịp trả.
-function gather(srcs, { grace = 8000, hard = 14000 } = {}) {
+function gather(srcs, { grace = 4000, hard = 16000 } = {}) {
   return new Promise(resolve => {
     const results = Array.from({ length: srcs.length }, () => null);
     let settled = 0, done = false;
@@ -130,8 +133,17 @@ module.exports = async function handler(req, res) {
     ['airplanes.live', () => getJSON(readsb('https://api.airplanes.live', by, q, lat, lon, rad))],
     ['OpenSky Network', () => opensky(by, q, lat, lon, rad)]
   ];
-  const rs = await gather(srcs);
+  const timed = srcs.map(([name, fn]) => [name, async () => {
+    const t0 = Date.now();
+    try { const value = await fn(); value._ms = Date.now() - t0; return value; }
+    catch (e) { e.ms = e.ms || (Date.now() - t0); throw e; }
+  }]);
+  const rs = await gather(timed);
   const { used, parts, tried, now, ac } = mergeResults(srcs, rs);
+  parts.forEach((p, i) => {
+    const r = rs[i];
+    p.ms = r && r.status === 'fulfilled' ? (r.value && r.value._ms) : (r && r.reason && r.reason.ms);
+  });
   const body = {
     source: used.length ? used.join(' + ') : null,
     now: now || Date.now(),
