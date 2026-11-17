@@ -1,5 +1,5 @@
 'use strict';
-/* Theo dõi máy bay – ADS-B: proxy /api/adsb gộp adsb.lol + adsb.fi + airplanes.live + OpenSky; trình duyệt gọi thẳng nguồn còn CORS (hiện thử airplanes.live). Thông tin chặng từ adsbdb.com. */
+/* Theo dõi máy bay – ADS-B: Cloudflare Worker (chính) hoặc Vercel /api/adsb (dự phòng) gộp adsb.lol + adsb.fi + airplanes.live + OpenSky; trình duyệt gọi thẳng nguồn còn CORS (hiện thử airplanes.live). Thông tin chặng từ adsbdb.com. */
 const TR = { map: null, layer: null, trailLayer: null, sel: null, timer: null, mode: null, list: [], trails: LS.get('trails', {}), src: '', now: 0, err: '', parts: [] };
 const HCMC = [10.823, 106.630];
 const PLANE = '<svg viewBox="0 0 24 24"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/></svg>';
@@ -62,6 +62,7 @@ async function flightToCallsign(q) { // số hiệu IATA (VN220) → callsign IC
 /* Gọi thẳng từ trình duyệt chỉ nguồn còn hy vọng CORS. Kiểm tra 17/11/2026 (Origin https://lanle102.github.io):
    adsb.lol và adsb.fi không gửi Access-Control-Allow-Origin; OpenSky chỉ cho https://opensky-network.org.
    airplanes.live bị Cloudflare 403 từ máy chủ đám mây nên chưa xem được header CORS – thử từ điện thoại/trình duyệt. */
+const ADSB_CF = 'https://thoi-tiet-bay-adsb.lehonglan102.workers.dev';
 const DIRECT = ['airplanes.live'];
 const directState = {};
 function canDirect(name) {
@@ -150,14 +151,30 @@ async function adsb(params, opt) {
   const silent = opt && opt.silent;
   const by = params.by, q = params.q || '', lat = params.lat, lon = params.lon, rad = params.r || 50;
   const jobs = [(async () => {
-    try {
-      const r = await fetchT(BASE + '/api/adsb?' + new URLSearchParams(params), 22000);
-      const j = await r.json();
-      return { kind: 'proxy', ac: acList({ ac: j.ac || [] }), now: j.now || Date.now(), parts: proxyParts(j), err: j.error || '' };
-    } catch (e) {
-      const err = e.name === 'AbortError' ? 'hết thời gian' : e.message;
-      return { kind: 'proxy', ac: [], now: 0, parts: [], err: 'máy chủ: ' + err };
+    const qs = new URLSearchParams(params);
+    // Cloudflare Worker (chính: adsb.lol không chặn) và Vercel (dự phòng, có adsb.fi) gọi song song rồi gộp.
+    const one = async (label, url, ms) => {
+      try {
+        const r = await fetchT(url, ms);
+        if (!r.ok && r.status !== 400) throw new Error('HTTP ' + r.status);
+        const j = await r.json();
+        const parts = proxyParts(j).map(p => ({ ...p, via: label }));
+        return { ok: true, label, ac: acList({ ac: j.ac || [] }), now: j.now || 0, parts, err: j.error || '' };
+      } catch (e) { return { ok: false, label, ac: [], now: 0, parts: [], err: label + ' ' + (e.name === 'AbortError' ? 'hết thời gian' : e.message) }; }
+    };
+    const pCf = one('Cloudflare', ADSB_CF + '/api/adsb?' + qs, 20000), pVc = one('Vercel', BASE + '/api/adsb?' + qs, 22000);
+    const cf = await pCf;
+    // Cloudflare đã có máy bay thì chỉ chờ Vercel thêm tối đa 3 giây.
+    const vc = cf.ok && cf.ac.length ? await Promise.race([pVc, new Promise(r => setTimeout(() => r({ ok: false, label: 'Vercel', ac: [], now: 0, parts: [], err: '' }), 3000))]) : await pVc;
+    const rs2 = [cf, vc];
+    const byName = new Map();
+    for (const x of rs2) for (const p of x.parts) {
+      const cur = byName.get(p.name);
+      if (!cur || (cur.err && !p.err) || (!p.err && p.n > cur.n)) byName.set(p.name, p);
     }
+    const ok = rs2.filter(x => x.ok && !(x.err && !x.ac.length));
+    return { kind: 'proxy', ac: mergeAc(rs2.map(x => x.ac)), now: Math.max(...rs2.map(x => x.now || 0)) || Date.now(), parts: [...byName.values()],
+      err: ok.length ? '' : 'máy chủ: ' + rs2.map(x => x.err).filter(Boolean).join(', ') };
   })()];
   for (const name of DIRECT) {
     if (!canDirect(name)) {
