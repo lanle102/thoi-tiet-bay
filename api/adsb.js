@@ -1,4 +1,4 @@
-// Proxy ADS-B công khai (không CORS): adsb.lol → airplanes.live → OpenSky Network.
+// Proxy ADS-B: adsb.lol, airplanes.live, adsb.fi, OpenSky. Trình duyệt gọi thêm airplanes.live nếu CORS cho phép, rồi gộp.
 // Tham số: by=callsign|reg|hex|point ; q=giá trị ; lat,lon,r (NM, ≤ 250) cho point.
 const clean = s => String(s || '').toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 10);
 async function getJSON(url, ms = 9000) {
@@ -36,21 +36,24 @@ module.exports = async function handler(req, res) {
   const srcs = [['adsb.lol', () => getJSON(readsb('https://api.adsb.lol', by, q, lat, lon, rad))], ['airplanes.live', () => getJSON(readsb('https://api.airplanes.live', by, q, lat, lon, rad))], ['adsb.fi', () => getJSON(by === 'point' ? `https://opendata.adsb.fi/api/v2/lat/${lat}/lon/${lon}/dist/${rad}` : by === 'hex' ? `https://opendata.adsb.fi/api/v2/hex/${q.toLowerCase()}` : by === 'reg' ? `https://opendata.adsb.fi/api/v2/registration/${q}` : `https://opendata.adsb.fi/api/v2/callsign/${q}`)], ['OpenSky Network', () => opensky(by, q, lat, lon, rad)]];
   if (by === 'point') { // gộp mọi nguồn, loại trùng theo hex → nhiều máy bay nhất
     const rs = await Promise.allSettled(srcs.map(([, fn]) => fn()));
-    const map = new Map(), used = []; let now = 0;
+    const map = new Map(), used = [], parts = []; let now = 0;
     rs.forEach((r, i) => {
       const name = srcs[i][0];
-      if (r.status !== 'fulfilled') { tried.push(name + ': ' + (r.reason?.name === 'AbortError' ? 'hết thời gian' : r.reason?.message)); return; }
+      if (r.status !== 'fulfilled') {
+        const err = r.reason?.name === 'AbortError' ? 'hết thời gian' : (r.reason?.message || 'lỗi');
+        tried.push(name + ': ' + err); parts.push({ name, n: 0, err }); return;
+      }
       const ac = (r.value.ac || r.value.aircraft || []).filter(a => a.lat != null && a.hex);
-      used.push(name + ' ' + ac.length); now = Math.max(now, r.value.now || 0);
+      used.push(name + ' ' + ac.length); parts.push({ name, n: ac.length }); now = Math.max(now, r.value.now || 0);
       for (const a of ac) {
         const h = a.hex.toLowerCase(); if (a.ground && a.alt_baro == null) a.alt_baro = 'ground';
         const o = map.get(h);
         if (!o) map.set(h, { ...a, hex: h }); else for (const k in a) if (o[k] == null || o[k] === '') o[k] = a[k];
       }
     });
-    if (!used.length) return res.status(200).json({ source: null, ac: [], tried, error: 'Không nguồn ADS-B nào trả dữ liệu' });
+    if (!used.length) return res.status(200).json({ source: null, ac: [], tried, parts, error: 'Không nguồn ADS-B nào trả dữ liệu' });
     res.setHeader('Cache-Control', 'public, s-maxage=4, stale-while-revalidate=8');
-    return res.status(200).json({ source: used.join(' + '), now: now || Date.now(), ac: [...map.values()], tried });
+    return res.status(200).json({ source: used.join(' + '), now: now || Date.now(), ac: [...map.values()], tried, parts });
   }
   for (const [name, fn] of srcs) {
     try {
@@ -58,8 +61,11 @@ module.exports = async function handler(req, res) {
       const ac = (j.ac || j.aircraft || []).filter(a => a.lat != null || by !== 'point');
       if (!ac.length && name !== 'OpenSky Network' && by !== 'point') { tried.push(name + ': không thấy'); continue; }
       res.setHeader('Cache-Control', 'public, s-maxage=4, stale-while-revalidate=8');
-      return res.status(200).json({ source: name, now: j.now || Date.now(), ac, tried });
+      const parts = tried.map(t => { const i = t.indexOf(': '); return { name: i >= 0 ? t.slice(0, i) : t, n: 0, err: i >= 0 ? t.slice(i + 2) : t }; });
+      parts.push({ name, n: ac.length });
+      return res.status(200).json({ source: name, now: j.now || Date.now(), ac, tried, parts });
     } catch (e) { tried.push(name + ': ' + (e.name === 'AbortError' ? 'hết thời gian' : e.message)); }
   }
-  res.status(200).json({ source: null, ac: [], tried, error: 'Không nguồn ADS-B nào trả dữ liệu' });
+  const parts = tried.map(t => { const i = t.indexOf(': '); return { name: i >= 0 ? t.slice(0, i) : t, n: 0, err: i >= 0 ? t.slice(i + 2) : t }; });
+  res.status(200).json({ source: null, ac: [], tried, parts, error: 'Không nguồn ADS-B nào trả dữ liệu' });
 };

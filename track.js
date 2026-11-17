@@ -1,6 +1,6 @@
 'use strict';
-/* Theo dõi máy bay – ADS-B công khai (adsb.lol → airplanes.live → OpenSky qua proxy /api/adsb), thông tin chặng từ adsbdb.com. */
-const TR = { map: null, layer: null, trailLayer: null, sel: null, timer: null, mode: null, list: [], trails: LS.get('trails', {}), src: '', now: 0, err: '' };
+/* Theo dõi máy bay – ADS-B: proxy /api/adsb gộp adsb.lol + adsb.fi + airplanes.live + OpenSky; trình duyệt gọi thẳng nguồn còn CORS (hiện thử airplanes.live). Thông tin chặng từ adsbdb.com. */
+const TR = { map: null, layer: null, trailLayer: null, sel: null, timer: null, mode: null, list: [], trails: LS.get('trails', {}), src: '', now: 0, err: '', parts: [] };
 const PLANE = '<svg viewBox="0 0 24 24"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/></svg>';
 function trInit() {
   if (TR.map) return;
@@ -22,11 +22,128 @@ function guessBy(q) {
 async function flightToCallsign(q) { // số hiệu IATA (VN220) → callsign ICAO (HVN220) qua adsbdb
   try { const r = await fetchT('https://api.adsbdb.com/v0/callsign/' + q, 8000); const j = await r.json(); return j.response?.flightroute?.callsign_icao || null; } catch { return null; }
 }
-async function adsb(params) {
-  const r = await fetchT(BASE + '/api/adsb?' + new URLSearchParams(params), 15000); const j = await r.json();
-  TR.src = j.source || ''; TR.now = j.now || Date.now(); TR.err = j.source ? '' : (j.error || 'lỗi') + (j.tried ? ' – ' + j.tried.join('; ') : '');
-  return j.ac || [];
+/* Gọi thẳng từ trình duyệt chỉ nguồn còn hy vọng CORS. Kiểm tra 17/11/2026 (Origin https://lanle102.github.io):
+   adsb.lol và adsb.fi không gửi Access-Control-Allow-Origin; OpenSky chỉ cho https://opensky-network.org.
+   airplanes.live bị Cloudflare 403 từ máy chủ đám mây nên chưa xem được header CORS – thử từ điện thoại/trình duyệt. */
+const DIRECT = ['airplanes.live'];
+const directState = {};
+function canDirect(name) {
+  const s = directState[name];
+  if (!s || s.ok) return true;
+  return Date.now() >= (s.until || 0);
 }
+function markDirect(name, ok, err) {
+  if (ok) { directState[name] = { ok: true }; return; }
+  const n = (directState[name] && !directState[name].ok ? directState[name].fail : 0) + 1;
+  directState[name] = { ok: false, fail: n, err, until: n >= 2 ? Date.now() + 15 * 60e3 : 0 };
+}
+function readsbUrl(base, by, q, lat, lon, rad) {
+  if (by === 'point') return `${base}/v2/point/${lat}/${lon}/${rad}`;
+  if (by === 'hex') return `${base}/v2/hex/${String(q).toLowerCase()}`;
+  if (by === 'reg') return `${base}/v2/reg/${q}`;
+  return `${base}/v2/callsign/${q}`;
+}
+function acList(j) {
+  return (j.ac || j.aircraft || []).filter(a => a && a.hex && a.lat != null && a.lon != null).map(a => {
+    const b = { ...a, hex: String(a.hex).toLowerCase() };
+    if (b.ground && b.alt_baro == null) b.alt_baro = 'ground';
+    return b;
+  });
+}
+function mergeAc(lists) {
+  const map = new Map();
+  for (const list of lists) for (const a of list) {
+    const h = a.hex, o = map.get(h);
+    if (!o) map.set(h, { ...a });
+    else for (const k in a) if (o[k] == null || o[k] === '') o[k] = a[k];
+  }
+  return [...map.values()];
+}
+function proxyParts(j) {
+  if (Array.isArray(j.parts) && j.parts.length) return j.parts.map(p => ({ name: p.name, n: p.n || 0, err: p.err || '', via: 'máy chủ' }));
+  const parts = [];
+  for (const u of String(j.source || '').split(' + ').map(s => s.trim()).filter(Boolean)) {
+    const m = u.match(/^(.*)\s+(\d+)$/);
+    if (m) parts.push({ name: m[1], n: +m[2], via: 'máy chủ' });
+    else parts.push({ name: u, n: (j.ac || []).length, via: 'máy chủ' });
+  }
+  for (const t of j.tried || []) {
+    const i = t.indexOf(': ');
+    parts.push({ name: i >= 0 ? t.slice(0, i) : t, n: 0, err: i >= 0 ? t.slice(i + 2) : t, via: 'máy chủ' });
+  }
+  return parts;
+}
+function combineParts(proxy, directs) {
+  const by = new Map();
+  for (const p of proxy) by.set(p.name, { ...p });
+  for (const d of directs) {
+    const cur = by.get(d.name);
+    if (!d.err) { by.set(d.name, { ...d, via: 'trình duyệt' }); continue; }
+    if (!cur) by.set(d.name, { ...d, via: 'trình duyệt' });
+    else if (cur.err) { cur.via = 'trình duyệt + máy chủ'; cur.err = `trình duyệt ${d.err}, máy chủ ${cur.err}`; }
+  }
+  const order = ['adsb.lol', 'adsb.fi', 'airplanes.live', 'OpenSky Network'];
+  return order.map(n => by.get(n)).filter(Boolean).concat([...by.values()].filter(p => !order.includes(p.name)));
+}
+function formatSrc(parts, total) {
+  const bits = parts.map(p => p.err && !p.n ? `${p.name}: lỗi ${p.err}` : `${p.name} ${p.n} (${p.via})`);
+  return bits.join(' · ') + (total != null ? ` · gộp ${total}` : '');
+}
+function renderSrc() {
+  const el = document.getElementById('tr-src'); if (!el) return;
+  if (!TR.mode) { el.hidden = true; el.textContent = ''; return; }
+  el.hidden = false;
+  el.textContent = TR.src ? ('Nguồn: ' + TR.src) : (TR.err ? ('Nguồn: ' + TR.err) : '');
+}
+async function fetchDirect(name, url) {
+  try {
+    const r = await fetchT(url, 6000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    const ac = acList(j);
+    markDirect(name, true);
+    return { name, n: ac.length, ac, now: j.now || Date.now(), via: 'trình duyệt' };
+  } catch (e) {
+    const err = e.name === 'AbortError' ? 'hết thời gian' : (e.message === 'Failed to fetch' ? 'bị CORS hoặc mạng chặn' : e.message);
+    markDirect(name, false, err);
+    return { name, n: 0, ac: [], err, via: 'trình duyệt' };
+  }
+}
+async function adsb(params) {
+  const by = params.by, q = params.q || '', lat = params.lat, lon = params.lon, rad = params.r || 50;
+  const jobs = [(async () => {
+    try {
+      const r = await fetchT(BASE + '/api/adsb?' + new URLSearchParams(params), 15000);
+      const j = await r.json();
+      return { kind: 'proxy', ac: acList({ ac: j.ac || [] }), now: j.now || Date.now(), parts: proxyParts(j), err: j.error || '' };
+    } catch (e) {
+      const err = e.name === 'AbortError' ? 'hết thời gian' : e.message;
+      return { kind: 'proxy', ac: [], now: 0, parts: [], err: 'máy chủ: ' + err };
+    }
+  })()];
+  for (const name of DIRECT) {
+    if (!canDirect(name)) {
+      const s = directState[name];
+      jobs.push(Promise.resolve({ kind: 'direct', name, n: 0, ac: [], err: (s && s.err) || 'tạm dừng', via: 'trình duyệt' }));
+      continue;
+    }
+    const url = name === 'airplanes.live' ? readsbUrl('https://api.airplanes.live', by, q, lat, lon, rad) : null;
+    if (url) jobs.push(fetchDirect(name, url).then(x => ({ kind: 'direct', ...x })));
+  }
+  const rs = await Promise.all(jobs);
+  const proxy = rs.find(x => x.kind === 'proxy') || { ac: [], parts: [], now: 0, err: '' };
+  const directs = rs.filter(x => x.kind === 'direct');
+  const okDirect = directs.filter(d => !d.err);
+  const parts = combineParts(proxy.parts, directs);
+  const list = mergeAc([proxy.ac, ...okDirect.map(d => d.ac)]);
+  TR.parts = parts;
+  TR.src = formatSrc(parts, list.length);
+  const rawNow = Math.max(proxy.now || 0, ...directs.map(d => d.now || 0));
+  TR.now = rawNow ? (rawNow < 1e12 ? rawNow * 1000 : rawNow) : Date.now();
+  TR.err = parts.some(p => !p.err) || list.length ? '' : (proxy.err || 'Không nguồn ADS-B nào trả dữ liệu');
+  return list;
+}
+
 function addTrail(a) {
   if (a.lat == null || !a.hex) return;
   const t = TR.trails[a.hex] ||= []; const last = t[t.length - 1], now = Date.now();
@@ -61,7 +178,7 @@ async function trTick(fit) {
     if (TR.sel && m.by === 'point' && !list.some(a => a.hex === TR.sel)) { const s = await adsb({ by: 'hex', q: TR.sel }).catch(() => []); list = list.concat(s); }
     const seen = new Set(); TR.list = list.filter(a => a.lat != null && a.lon != null && !seen.has(a.hex) && seen.add(a.hex)); TR.list.forEach(addTrail); saveTrails();
   } catch (e) { TR.err = e.name === 'AbortError' ? 'hết thời gian chờ' : e.message; }
-  trDraw(); trPanel();
+  trDraw(); trPanel(); renderSrc();
   if (fit && TR.list.length && m.by !== 'point') TR.map.setView([TR.list[0].lat, TR.list[0].lon], 8);
 }
 const altTxt = a => a.alt_baro === 'ground' ? 'trên mặt đất' : a.alt_baro != null ? Math.round(a.alt_baro).toLocaleString('vi-VN') + ' ft' : '—';
@@ -85,7 +202,7 @@ async function acInfo(hex) { if (hex in acCache) return acCache[hex];
   try { const j = await (await fetchT('https://api.adsbdb.com/v0/aircraft/' + hex, 8000)).json(); acCache[hex] = j.response?.aircraft || null; } catch { acCache[hex] = null; } return acCache[hex]; }
 function trPanel() {
   const el = document.getElementById('tr-panel'), m = TR.mode;
-  const head = `<div class="tr-meta">${m ? (m.by === 'point' ? `Quanh ${m.apt} ${m.r} NM` : `Tìm ${({ callsign: 'callsign', reg: 'số đăng ký', hex: 'hex' })[m.by]} «${esc(m.q)}»`) : ''} · ${TR.list.length} máy bay · ${TR.src ? 'nguồn ' + esc(TR.src) + ' lúc ' + fmtUTC(new Date(TR.now), false) + ' (' + fmtLocalNow(TR.now) + ' giờ máy)' : ''}${m?.note ? '<br>' + esc(m.note) : ''}${TR.err ? `<br><span class="errtxt">Không có dữ liệu: ${esc(TR.err)}</span>` : ''}</div>`;
+  const head = `<div class="tr-meta">${m ? (m.by === 'point' ? `Quanh ${m.apt} ${m.r} NM` : `Tìm ${({ callsign: 'callsign', reg: 'số đăng ký', hex: 'hex' })[m.by]} «${esc(m.q)}»`) : ''} · ${TR.list.length} máy bay${TR.now ? ' · lúc ' + fmtUTC(new Date(TR.now), false) + ' (' + fmtLocalNow(TR.now) + ' giờ máy)' : ''}${m?.note ? '<br>' + esc(m.note) : ''}${TR.err ? `<br><span class="errtxt">Không có dữ liệu: ${esc(TR.err)}</span>` : ''}</div>`;
   const a = TR.list.find(x => x.hex === TR.sel);
   if (!a) {
     const rows = TR.list.slice().sort((x, y) => (y.alt_baro === 'ground' ? -1 : y.alt_baro || 0) - (x.alt_baro === 'ground' ? -1 : x.alt_baro || 0)).slice(0, 60).map(a => `<div class="tr-item" data-hex="${a.hex}"><b>${esc((a.flight || '').trim() || '—')}</b><span>${esc(a.r || '')}</span><span>${esc(a.t || '')}</span><span>${altTxt(a)}</span><span>${a.gs != null ? Math.round(a.gs) + ' kt' : ''}</span></div>`).join('');
@@ -100,7 +217,7 @@ function trPanel() {
     ['Hướng bay', a.track != null ? `${Math.round(a.track)}° (${compass(a.track)})` : '—'], ['Tốc độ lên/xuống', vr != null ? `${vr > 0 ? '+' : ''}${vr} ft/phút` : '—'],
     ['Squawk', esc(a.squawk || '—') + (/^(7500|7600|7700)$/.test(a.squawk || '') ? ' <b class="errtxt">KHẨN CẤP</b>' : '')], ['Vị trí', `${a.lat.toFixed(4)}, ${a.lon.toFixed(4)}${a.seen_pos != null ? ` <small>(${Math.round(a.seen_pos)} giây trước)</small>` : ''}`]];
   if (a.wd != null) rows.push(['Gió tại độ cao (máy bay tính)', `${pad3(a.wd)}° ${a.ws} kt${a.oat != null ? ` · OAT ${a.oat}°C` : ''}`]);
-  el.innerHTML = head + `<div class="card"><div class="card-head"><h3>${esc((a.flight || '').trim() || a.r || a.hex)}</h3><span class="sub">nguồn ${esc(TR.src)}</span><button class="linkbtn" id="tr-close" style="margin-left:auto">Đóng</button></div>
+  el.innerHTML = head + `<div class="card"><div class="card-head"><h3>${esc((a.flight || '').trim() || a.r || a.hex)}</h3><span class="sub">nguồn gộp</span><button class="linkbtn" id="tr-close" style="margin-left:auto">Đóng</button></div>
     <div id="tr-route" class="note" style="padding:8px 12px"></div><div class="drows">${rows.map(r => `<div class="drow"><div class="k">${r[0]}</div><div class="v">${r[1]}</div></div>`).join('')}</div>
     <div class="note" style="padding:0 12px 10px">Vết bay: ${(TR.trails[a.hex] || []).length} điểm từ các lần cập nhật. <a href="https://globe.adsb.lol/?icao=${a.hex}" target="_blank" rel="noopener">Xem trace đầy đủ trên adsb.lol ↗</a></div>
     <div style="padding:0 12px 12px"><a class="fr24btn" href="https://www.flightradar24.com/${encodeURIComponent((a.flight || '').trim() || a.r || '')}" target="_blank" rel="noopener">Mở trên Flightradar24 ↗</a></div></div>`;
