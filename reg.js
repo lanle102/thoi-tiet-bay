@@ -76,9 +76,8 @@ function guessBy(q) {
   return 'callsign';
 }
 
-const api = { REG_PREFIXES, normalizeReg, expandReg, guessBy };
-if (typeof module === 'object' && module.exports) module.exports = api;
-if (typeof window !== 'undefined') {
+if (typeof module === 'object' && module.exports) module.exports = { REG_PREFIXES, normalizeReg, expandReg, guessBy };
+else if (typeof window !== 'undefined') {
   window.normalizeReg = normalizeReg;
   window.expandReg = expandReg;
   window.guessBy = guessBy;
