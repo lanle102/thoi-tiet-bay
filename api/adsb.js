@@ -55,23 +55,28 @@ function takeCache(key) {
 }
 function putCache(key, body) { mem.set(key, { exp: Date.now() + MEM_MS, body }); if (mem.size > 80) for (const [k, v] of mem) if (Date.now() > v.exp) mem.delete(k); }
 
-// Chạy song song; khi đã có ít nhất một nguồn thành công thì chờ thêm `grace` ms rồi trả, không đợi nguồn chậm hết timeout.
-function gather(srcs, { grace = 3000, hard = 12000 } = {}) {
+// Chạy song song. Chỉ trả sớm khi đã có máy bay (chờ thêm grace để gộp nguồn khác); nếu mới có nguồn rỗng thì đợi đến khi mọi nguồn xong hoặc hết hard.
+// Dùng mảng đặc (không dùng new Array) để không bỏ sót nguồn chưa kịp trả.
+function gather(srcs, { grace = 8000, hard = 14000 } = {}) {
   return new Promise(resolve => {
-    const results = new Array(srcs.length);
-    let settled = 0, got = false, done = false;
+    const results = Array.from({ length: srcs.length }, () => null);
+    let settled = 0, done = false;
     let graceTimer, hardTimer;
     const finish = () => {
       if (done) return; done = true;
       clearTimeout(graceTimer); clearTimeout(hardTimer);
-      resolve(results.map((r, i) => r || { status: 'rejected', reason: Object.assign(new Error('chưa kịp trả'), { name: 'AbortError' }) }));
+      resolve(results.map(r => r || { status: 'rejected', reason: Object.assign(new Error('chưa kịp trả'), { name: 'AbortError' }) }));
     };
+    const hasAc = () => results.some(r => {
+      if (!r || r.status !== 'fulfilled') return false;
+      return (r.value.ac || r.value.aircraft || []).some(a => a && a.hex && a.lat != null);
+    });
     hardTimer = setTimeout(finish, hard);
     srcs.forEach(([, fn], i) => {
       Promise.resolve().then(fn).then(value => {
         results[i] = { status: 'fulfilled', value };
-        settled++; got = true;
-        if (!graceTimer) graceTimer = setTimeout(finish, grace);
+        settled++;
+        if (hasAc() && !graceTimer) graceTimer = setTimeout(finish, grace);
         if (settled === srcs.length) finish();
       }, reason => {
         results[i] = { status: 'rejected', reason };
@@ -133,7 +138,12 @@ module.exports = async function handler(req, res) {
     ac, tried, parts, region,
     error: used.length ? undefined : 'Không nguồn ADS-B nào trả dữ liệu'
   };
-  if (used.length) putCache(key, body);
-  res.setHeader('Cache-Control', 'public, s-maxage=8, stale-while-revalidate=16');
+  const incomplete = parts.some(p => p.err === 'chưa kịp trả' || p.err === 'hết thời gian');
+  if (used.length && !incomplete) {
+    putCache(key, body);
+    res.setHeader('Cache-Control', 'public, s-maxage=8, stale-while-revalidate=16');
+  } else {
+    res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=0, must-revalidate');
+  }
   return res.status(200).json(body);
 };
