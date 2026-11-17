@@ -1,6 +1,7 @@
 'use strict';
 /* Theo dõi máy bay – ADS-B: proxy /api/adsb gộp adsb.lol + adsb.fi + airplanes.live + OpenSky; trình duyệt gọi thẳng nguồn còn CORS (hiện thử airplanes.live). Thông tin chặng từ adsbdb.com. */
 const TR = { map: null, layer: null, trailLayer: null, sel: null, timer: null, mode: null, list: [], trails: LS.get('trails', {}), src: '', now: 0, err: '', parts: [] };
+const HCMC = [10.823, 106.630];
 const PLANE = '<svg viewBox="0 0 24 24"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/></svg>';
 function trInit() {
   if (TR.map) return;
@@ -8,11 +9,53 @@ function trInit() {
   L.control.zoom({ position: 'bottomright' }).addTo(TR.map);
   attachBasemap(TR.map, 'ADS-B: adsb.lol / adsb.fi / airplanes.live / OpenSky (ODbL/CC)');
   TR.trailLayer = L.layerGroup().addTo(TR.map); TR.layer = L.layerGroup().addTo(TR.map);
-  const a = aptInfo(favs[0] || 'VVTS'); TR.map.setView([a.lat ?? 10.8, a.lon ?? 106.65], 8);
-  document.getElementById('tr-apt').value = favs[0] || 'VVTS';
+  TR.skipMove = true;
+  TR.map.setView(HCMC, 9);
   TR.map.on('click', () => { if (TR.sel) { TR.sel = null; trPanel(); trDraw(); } });
+  TR.map.on('moveend', () => {
+    if (TR.skipMove || TR.mode?.by !== 'view') return;
+    clearTimeout(TR.moveTimer);
+    TR.moveTimer = setTimeout(() => { if (tab === 'track') trTick(); }, 800);
+  });
 }
-window.showTrack = () => { trInit(); whenMapReady(TR.map, trFit); if (!TR.mode) trNear(); else trStart(); };
+window.showTrack = () => {
+  trInit();
+  whenMapReady(TR.map, () => {
+    TR.map.invalidateSize();
+    if (!TR.mode) TR.mode = { by: 'view' };
+    TR.skipMove = false;
+    trTick();
+    trStart();
+  });
+};
+function viewQuery() {
+  if (!TR.map) return { lat: HCMC[0].toFixed(4), lon: HCMC[1].toFixed(4), r: 50 };
+  const b = TR.map.getBounds(), c = b.getCenter();
+  const rNm = Math.min(250, Math.max(5, Math.ceil(c.distanceTo(b.getNorthEast()) / 1852)));
+  return { lat: c.lat.toFixed(4), lon: c.lng.toFixed(4), r: rNm };
+}
+function trGoHcmc() {
+  if (!TR.map) return;
+  TR.skipMove = true;
+  TR.mode = { by: 'view' };
+  TR.sel = null;
+  TR.map.setView(HCMC, 9, { animate: false });
+  requestAnimationFrame(() => { TR.skipMove = false; trTick(); trStart(); });
+}
+function trLocate() {
+  if (!navigator.geolocation) { toast('Không lấy được vị trí — về TP.HCM'); trGoHcmc(); return; }
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      TR.skipMove = true;
+      TR.mode = { by: 'view' };
+      TR.sel = null;
+      TR.map.setView([pos.coords.latitude, pos.coords.longitude], 11, { animate: false });
+      requestAnimationFrame(() => { TR.skipMove = false; trTick(); trStart(); });
+    },
+    () => { toast('Không lấy được vị trí — về TP.HCM'); trGoHcmc(); },
+    { enableHighAccuracy: false, timeout: 8000, maximumAge: 60 * 1000 }
+  );
+}
 async function flightToCallsign(q) { // số hiệu IATA (VN220) → callsign ICAO (HVN220) qua adsbdb
   try { const r = await fetchT('https://api.adsbdb.com/v0/callsign/' + q, 8000); const j = await r.json(); return j.response?.flightroute?.callsign_icao || null; } catch { return null; }
 }
@@ -168,47 +211,49 @@ async function trSearch() {
   let by = document.getElementById('tr-by').value; if (by === 'auto') by = guessBy(q);
   let note = '';
   const raw = q, reg = expandReg(q);
-  if (by === 'reg' && reg) {
-    note = raw !== reg ? `Số đăng ký ${raw} → ${reg}` : `Số đăng ký ${reg}`;
-    TR.mode = { by: 'regcs', q: reg, qReg: reg, qCs: raw.replace(/-/g, ''), note }; TR.sel = null; await trTick(true);
-    if (TR.list.length === 1) { TR.sel = TR.list[0].hex; trPanel(); trDraw(); }
-    trStart(); return;
-  }
-  if (by === 'reg' && !reg) note = 'Thử số đăng ký «' + q + '» (không nhận được dạng chuẩn)';
-  if (by === 'flight') { const cs = await flightToCallsign(q); if (cs) { note = `Số hiệu ${q} → callsign ${cs} (adsbdb.com)`; q = cs; } else note = `Không đổi được số hiệu ${q} sang callsign ICAO – thử tìm thẳng`; by = 'callsign'; }
-  TR.mode = { by, q, note }; TR.sel = null; await trTick(true);
-  if (TR.list.length === 1) { TR.sel = TR.list[0].hex; trPanel(); trDraw(); }
+  let list = [];
+  try {
+    if (by === 'reg' && reg) {
+      note = raw !== reg ? `Số đăng ký ${raw} → ${reg}` : `Số đăng ký ${reg}`;
+      list = await adsbPair(reg, raw.replace(/-/g, ''));
+    } else {
+      if (by === 'reg' && !reg) note = 'Thử số đăng ký «' + q + '» (không nhận được dạng chuẩn)';
+      if (by === 'flight') { const cs = await flightToCallsign(q); if (cs) { note = `Số hiệu ${q} → callsign ${cs} (adsbdb.com)`; q = cs; } else note = `Không đổi được số hiệu ${q} sang callsign ICAO – thử tìm thẳng`; by = 'callsign'; }
+      list = await adsb({ by, q });
+    }
+  } catch (e) { toast((e && e.message) || 'Không tìm được máy bay'); return; }
+  if (!list.length) { toast('Không thấy máy bay «' + raw + '»' + (note ? ' — ' + note : '')); return; }
+  if (list.length === 1) TR.sel = list[0].hex;
+  else TR.sel = TR.sel && list.some(a => a.hex === TR.sel) ? TR.sel : list[0].hex;
+  const a = list.find(x => x.hex === TR.sel) || list[0];
+  TR.keep = list.slice();
+  TR.list = list;
+  TR.mode = { by: 'view', note };
+  TR.skipMove = true;
+  TR.map.setView([a.lat, a.lon], Math.max(TR.map.getZoom(), 9), { animate: false });
+  trDraw(); trPanel(); renderSrc();
+  requestAnimationFrame(() => { TR.skipMove = false; trTick(); });
   trStart();
 }
-async function trNear() {
-  const id = document.getElementById('tr-apt').value.trim().toUpperCase() || 'VVTS';
-  await loadAirports().catch(() => {}); const a = aptInfo(id);
-  if (a.lat == null) { toast('Không tìm thấy sân bay ' + id); return; }
-  const r = +document.getElementById('tr-r').value;
-  TR.mode = { by: 'point', lat: a.lat, lon: a.lon, r, apt: id }; TR.sel = null;
-  trFit();
-  await trTick(true); trStart();
-}
-function trFit() {
-  const m = TR.mode; if (!TR.map || m?.by !== 'point') return;
-  TR.map.invalidateSize();
-  const s = TR.map.getSize(); if (s.x < 40 || s.y < 40) return;
-  TR.map.fitBounds(L.latLng(m.lat, m.lon).toBounds(m.r * 1852 * 2), { padding: [20, 20], maxZoom: 11, animate: false });
-}
 function trStart() { clearInterval(TR.timer); TR.timer = setInterval(() => { if (tab === 'track' && !document.hidden) trTick(); }, 12000); }
-async function trTick(fit) {
+async function trTick() {
   const m = TR.mode; if (!m) return;
+  TR.gen = (TR.gen || 0) + 1;
+  const gen = TR.gen;
   try {
     let list;
-    if (m.by === 'point') {
-      list = await adsb({ by: 'point', lat: m.lat.toFixed(4), lon: m.lon.toFixed(4), r: m.r });
+    if (m.by === 'view') {
+      const q = viewQuery();
+      TR.viewR = q.r;
+      list = await adsb({ by: 'point', lat: q.lat, lon: q.lon, r: q.r });
       if (TR.sel && !list.some(a => a.hex === TR.sel)) { const s = await adsb({ by: 'hex', q: TR.sel }).catch(() => []); list = list.concat(s); }
+      if (TR.keep) { list = mergeAc([list, TR.keep]); TR.keep = null; }
     } else if (m.by === 'regcs') list = await adsbPair(m.qReg, m.qCs);
     else list = await adsb({ by: m.by, q: m.q });
+    if (gen !== TR.gen) return;
     const seen = new Set(); TR.list = list.filter(a => a.lat != null && a.lon != null && !seen.has(a.hex) && seen.add(a.hex)); TR.list.forEach(addTrail); saveTrails();
-  } catch (e) { TR.err = e.name === 'AbortError' ? 'hết thời gian chờ' : e.message; }
+  } catch (e) { if (gen !== TR.gen) return; TR.err = e.name === 'AbortError' ? 'hết thời gian chờ' : e.message; }
   trDraw(); trPanel(); renderSrc();
-  if (fit && TR.list.length && m.by !== 'point') TR.map.setView([TR.list[0].lat, TR.list[0].lon], 8);
 }
 const altTxt = a => a.alt_baro === 'ground' ? 'trên mặt đất' : a.alt_baro != null ? Math.round(a.alt_baro).toLocaleString('vi-VN') + ' ft' : '—';
 function trDraw() {
@@ -220,9 +265,8 @@ function trDraw() {
     mk.bindTooltip(`${esc((a.flight || '').trim() || a.r || a.hex)}<br><small>${altTxt(a)}</small>`, { direction: 'top', offset: [0, -10], className: 'stn-label' });
     mk.on('click', e => { L.DomEvent.stopPropagation(e); TR.sel = a.hex; trPanel(); trDraw(); });
   }
-  const showTrail = TR.sel ? [TR.sel] : TR.mode?.by !== 'point' ? TR.list.map(a => a.hex) : [];
+  const showTrail = TR.sel ? [TR.sel] : TR.mode?.by !== 'view' ? TR.list.map(a => a.hex) : [];
   for (const h of showTrail) { const t = TR.trails[h]; if (t?.length > 1) L.polyline(t.map(p => [p[0], p[1]]), { color: '#ff9f0a', weight: 3, opacity: .9 }).addTo(TR.trailLayer); }
-  if (TR.mode?.by === 'point') L.circle([TR.mode.lat, TR.mode.lon], { radius: TR.mode.r * 1852, color: '#0a84ff', weight: 1, fill: false, dashArray: '4 6' }).addTo(TR.trailLayer);
 }
 const routeCache = {}, acCache = {};
 async function routeInfo(cs) { cs = (cs || '').trim(); if (!cs) return null; if (cs in routeCache) return routeCache[cs];
@@ -231,11 +275,11 @@ async function acInfo(hex) { if (hex in acCache) return acCache[hex];
   try { const j = await (await fetchT('https://api.adsbdb.com/v0/aircraft/' + hex, 8000)).json(); acCache[hex] = j.response?.aircraft || null; } catch { acCache[hex] = null; } return acCache[hex]; }
 function trPanel() {
   const el = document.getElementById('tr-panel'), m = TR.mode;
-  const head = `<div class="tr-meta">${m ? (m.by === 'point' ? `Quanh ${m.apt} ${m.r} NM` : `Tìm ${({ callsign: 'callsign', reg: 'số đăng ký', regcs: 'số đăng ký', hex: 'hex' })[m.by] || m.by} «${esc(m.q)}»`) : ''} · ${TR.list.length} máy bay${TR.now ? ' · lúc ' + fmtUTC(new Date(TR.now), false) + ' (' + fmtLocalNow(TR.now) + ' giờ máy)' : ''}${m?.note ? '<br>' + esc(m.note) : ''}${TR.err ? `<br><span class="errtxt">Không có dữ liệu: ${esc(TR.err)}</span>` : ''}</div>`;
+  const head = `<div class="tr-meta">${m ? (m.by === 'view' ? `Vùng bản đồ · ${TR.viewR || viewQuery().r} NM` : `Tìm ${({ callsign: 'callsign', reg: 'số đăng ký', regcs: 'số đăng ký', hex: 'hex' })[m.by] || m.by} «${esc(m.q)}»`) : ''} · ${TR.list.length} máy bay${TR.now ? ' · lúc ' + fmtUTC(new Date(TR.now), false) + ' (' + fmtLocalNow(TR.now) + ' giờ máy)' : ''}${m?.note ? '<br>' + esc(m.note) : ''}${TR.err ? `<br><span class="errtxt">Không có dữ liệu: ${esc(TR.err)}</span>` : ''}</div>`;
   const a = TR.list.find(x => x.hex === TR.sel);
   if (!a) {
     const rows = TR.list.slice().sort((x, y) => (y.alt_baro === 'ground' ? -1 : y.alt_baro || 0) - (x.alt_baro === 'ground' ? -1 : x.alt_baro || 0)).slice(0, 60).map(a => `<div class="tr-item" data-hex="${a.hex}"><b>${esc((a.flight || '').trim() || '—')}</b><span>${esc(a.r || '')}</span><span>${esc(a.t || '')}</span><span>${altTxt(a)}</span><span>${a.gs != null ? Math.round(a.gs) + ' kt' : ''}</span></div>`).join('');
-    el.innerHTML = head + (rows || (m ? '<div class="muted" style="padding:8px">Không thấy máy bay nào' + (m.by !== 'point' ? ' (có thể máy bay đang không phát ADS-B hoặc ngoài vùng phủ)' : '') + '.</div>' : '')) + '<div class="note">ADS-B từ mạng tình nguyện; không phủ toàn cầu, có thể trễ vài giây. Vết bay vẽ từ các lần cập nhật kể từ khi mở (nguồn trace đầy đủ của adsb.lol chặn truy cập tự động).</div>';
+    el.innerHTML = head + (rows || (m ? '<div class="muted" style="padding:8px">Không thấy máy bay nào' + (m.by !== 'view' ? ' (có thể máy bay đang không phát ADS-B hoặc ngoài vùng phủ)' : '') + '.</div>' : '')) + '<div class="note">ADS-B từ mạng tình nguyện; không phủ toàn cầu, có thể trễ vài giây. Vết bay vẽ từ các lần cập nhật kể từ khi mở (nguồn trace đầy đủ của adsb.lol chặn truy cập tự động).</div>';
     return;
   }
   const kmh = a.gs != null ? Math.round(a.gs * 1.852) : null, alt = a.alt_baro === 'ground' ? null : a.alt_baro;
@@ -262,5 +306,4 @@ function trPanel() {
 document.getElementById('tr-panel').addEventListener('click', e => { const it = e.target.closest('.tr-item'); if (!it) return; TR.sel = it.dataset.hex; const a = TR.list.find(x => x.hex === TR.sel); if (a) TR.map.panTo([a.lat, a.lon]); trPanel(); trDraw(); });
 document.getElementById('tr-go').onclick = trSearch;
 document.getElementById('tr-q').addEventListener('keydown', e => { if (e.key === 'Enter') trSearch(); });
-document.getElementById('tr-near').onclick = trNear;
-document.getElementById('tr-locate').onclick = trNear;
+document.getElementById('tr-locate').onclick = trLocate;

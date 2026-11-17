@@ -59,11 +59,10 @@
 
   <!-- Máy bay -->
   <section id="view-track" class="view tabview" hidden>
-    <header class="topbar"><span></span><h1>Theo dõi máy bay</h1><div class="tb-right"><button class="tb-icon" id="tr-locate" aria-label="Quanh sân bay"><svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 3h-2.1A7 7 0 0 0 13 5.1V3h-2v2.1A7 7 0 0 0 5.1 11H3v2h2.1a7 7 0 0 0 5.9 5.9V21h2v-2.1a7 7 0 0 0 5.9-5.9H21z"/></svg></button></div></header>
+    <header class="topbar"><span></span><h1>Theo dõi máy bay</h1><div class="tb-right"><button class="tb-icon" id="tr-locate" aria-label="Về vị trí của tôi" title="Về vị trí của tôi"><svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 3h-2.1A7 7 0 0 0 13 5.1V3h-2v2.1A7 7 0 0 0 5.1 11H3v2h2.1a7 7 0 0 0 5.9 5.9V21h2v-2.1a7 7 0 0 0 5.9-5.9H21z"/></svg></button></div></header>
     <div class="tr-search">
       <div class="tr-row"><input id="tr-q" class="tinput" placeholder="Callsign, số hiệu (VN220), số đăng ký (VNA651 hoặc VN-A651), hex (888123)" autocomplete="off" autocapitalize="characters" spellcheck="false">
         <select id="tr-by" class="tsel"><option value="auto">Tự nhận</option><option value="callsign">Callsign</option><option value="flight">Số hiệu chuyến</option><option value="reg">Số đăng ký</option><option value="hex">Hex ICAO</option></select><button class="pill sm" id="tr-go">Tìm</button></div>
-      <div class="tr-row"><span class="small">Quanh sân bay</span><input id="tr-apt" class="tinput short" placeholder="VVTS" maxlength="4" autocapitalize="characters"><select id="tr-r" class="tsel"><option value="25">25 NM</option><option value="50" selected>50 NM</option><option value="100">100 NM</option><option value="200">200 NM</option></select><button class="pill sm ghost" id="tr-near">Xem</button></div>
     </div>
     <div id="tr-map"></div>
     <div id="tr-src" class="tr-src" hidden></div>
@@ -156,7 +155,7 @@
 <script src="map.js?v=8"></script>
 <script src="wx2.js?v=8"></script>
 <script src="reg.js?v=2"></script>
-<script src="track.js?v=12"></script>
+<script src="track.js?v=13"></script>
 <script src="tools.js?v=7"></script>
 <script src="laws.js?v=7"></script>
 </body>

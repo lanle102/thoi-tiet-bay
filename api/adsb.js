@@ -1,7 +1,8 @@
+// Proxy ADS-B (Node sin1; đã thử Edge/hkg1/hnd1/bom1 + UA trình duyệt + HTTP/1.1 + IPv4 — Vercel vẫn không tới được adsb.lol).
 // Proxy ADS-B (chạy tại sin1): adsb.lol, adsb.fi, adsb.one, airplanes.live, OpenSky.
 // Gọi song song, retry 1 lần, trả khi đã có dữ liệu (không chờ nguồn chậm hết timeout).
 // Cache ~8s theo toạ độ làm tròn / theo mã tìm.
-const UA = { 'User-Agent': 'ThoiTietBay/2.0 (personal PWA; https://lanle102.github.io/thoi-tiet-bay/)', Accept: 'application/json' };
+const UA = { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36', Accept: 'application/json,text/plain,*/*', 'Accept-Language': 'en-US,en;q=0.9' };
 const { expandReg } = require('../reg.js');
 const clean = s => String(s || '').toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 12);
 const mem = new Map(); // key -> { exp, body }
@@ -13,7 +14,7 @@ async function getJSON(url, ms = 16000, retries = 1) {
     const started = Date.now();
     const c = new AbortController(); const t = setTimeout(() => c.abort(), ms);
     try {
-      const r = await fetch(url, { signal: c.signal, headers: UA });
+      const r = await fetch(url, { signal: c.signal, headers: UA, keepalive: true });
       if (!r.ok) { const e = new Error('HTTP ' + r.status); e.status = r.status; throw e; }
       return await r.json();
     } catch (e) {
