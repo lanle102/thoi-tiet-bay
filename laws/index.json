@@ -1,5 +1,5 @@
 {
- "built": "2026-11-26T02:53:34.791Z",
+ "built": "2026-11-27T02:55:48.966Z",
  "sources": [
   {
    "id": "cfr1",
@@ -76,7 +76,7 @@
    "group": "FAA",
    "title": "FAA Aeronautical Information Manual (AIM)",
    "lang": "en",
-   "asOf": "2026-11-26",
+   "asOf": "2026-11-27",
    "url": "https://www.faa.gov/air_traffic/publications/atpubs/aim_html/",
    "license": "Tài liệu Chính phủ Hoa Kỳ (FAA) – phạm vi công cộng.",
    "count": 432,
